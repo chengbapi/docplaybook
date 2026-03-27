@@ -49,6 +49,9 @@ export class DocSetProcessor {
 
     const sourceRaw = await this.provider.read(docSet.source.relativePath);
     const currentSourceSnapshot = parseMarkdownSnapshot(docSet.source.relativePath, sourceRaw);
+    console.log(
+      `${label('sync', 'blue')} ${docSet.source.relativePath} (${this.config.targetLanguages.join(', ')}, reason: ${reason})`
+    );
     const requestPool = new RequestPool(
       MAX_MAX_CONCURRENT_REQUESTS,
       this.config.concurrency?.maxConcurrentRequests ?? DEFAULT_MAX_CONCURRENT_REQUESTS
@@ -181,6 +184,7 @@ export class DocSetProcessor {
     usage: ModelUsageStats;
   }> {
     const targetRef = input.docSet.targets[input.targetLanguage];
+    console.log(`${label('sync', 'blue')} ${input.docSet.source.relativePath} -> ${targetRef.relativePath}`);
     const currentMemory = await this.memoryStore.read(input.targetLanguage);
     const targetExists = await this.provider.exists(targetRef.relativePath);
     const currentTargetSnapshot = targetExists
