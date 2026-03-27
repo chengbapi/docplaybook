@@ -6,9 +6,6 @@ import type { AppConfig } from '../src/types.ts';
 
 const config: AppConfig = {
   version: 1,
-  provider: {
-    kind: 'local'
-  },
   sourceLanguage: 'zh-CN',
   targetLanguages: ['en', 'ja'],
   layout: {
@@ -19,9 +16,7 @@ const config: AppConfig = {
     model: 'openai/gpt-5-mini',
     apiKeyEnv: 'AI_GATEWAY_API_KEY'
   },
-  watch: {
-    ignore: []
-  }
+  ignorePatterns: []
 };
 
 test('sibling layout groups multiple doc sets and ignores localized files as sources', () => {

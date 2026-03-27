@@ -26,6 +26,14 @@ function translateMarkdownLikeModel(sourceBlock: string, prefix: string): string
   return `${prefix}${sourceBlock}`;
 }
 
+function fakeUsage(totalTokens = 15): { inputTokens: number; outputTokens: number; totalTokens: number } {
+  return {
+    inputTokens: Math.max(0, totalTokens - 5),
+    outputTokens: Math.min(5, totalTokens),
+    totalTokens
+  };
+}
+
 async function createTempWorkspace(testName: string): Promise<string> {
   return fs.mkdtemp(path.join(os.tmpdir(), `docplaybook-${testName}-`));
 }
@@ -49,7 +57,6 @@ async function setupWorkspace(root: string, sourceRaw: string): Promise<AppConfi
 
   return {
     version: 1,
-    provider: { kind: 'local' },
     sourceLanguage: 'zh-CN',
     targetLanguages: ['en'],
     layout: { kind: 'sibling' },
@@ -58,9 +65,7 @@ async function setupWorkspace(root: string, sourceRaw: string): Promise<AppConfi
       model: 'openai/gpt-5-mini',
       apiKeyEnv: 'AI_GATEWAY_API_KEY'
     },
-    watch: {
-      ignore: ['**/node_modules/**', '**/.git/**', '**/dist/**', '**/.docplaybook/**']
-    }
+    ignorePatterns: ['**/node_modules/**', '**/.git/**', '**/dist/**', '**/.docplaybook/**']
   };
 }
 
@@ -97,22 +102,28 @@ test('DocSetProcessor creates translations while preserving non-translatable cod
     root,
     ['# 欢迎', '', '这是一段介绍。', '', '```ts', "console.log('keep me');", '```', ''].join('\n')
   );
-  const provider = new LocalFolderProvider(root, config.watch?.ignore ?? []);
+  const provider = new LocalFolderProvider(root, config.ignorePatterns ?? []);
   const runtimeStore = new RuntimeStore(root);
   const translatorCalls: TranslationContext[] = [];
   const memoryUpdateCalls: ManualCorrection[][] = [];
 
   const translator = {
-    async translateBlock(context: TranslationContext): Promise<string> {
+    async translateBlock(context: TranslationContext): Promise<{ text: string; usage: { inputTokens: number; outputTokens: number; totalTokens: number } }> {
       translatorCalls.push(context);
-      return translateMarkdownLikeModel(context.sourceBlock, 'EN:');
+      return {
+        text: translateMarkdownLikeModel(context.sourceBlock, 'EN:'),
+        usage: fakeUsage()
+      };
     }
   } as unknown as Translator;
 
   const memoryUpdater = {
-    async updateMemory(input: { memoryText: string; corrections: ManualCorrection[] }): Promise<string> {
+    async updateMemory(input: { memoryText: string; corrections: ManualCorrection[] }): Promise<{ text: string; usage: { inputTokens: number; outputTokens: number; totalTokens: number } }> {
       memoryUpdateCalls.push(input.corrections);
-      return input.memoryText;
+      return {
+        text: input.memoryText,
+        usage: fakeUsage(0)
+      };
     }
   } as unknown as MemoryUpdater;
 
@@ -175,7 +186,6 @@ test('DocSetProcessor can bootstrap README translations for multiple target lang
 
   const config: AppConfig = {
     version: 1,
-    provider: { kind: 'local' },
     sourceLanguage: 'zh-CN',
     targetLanguages: ['en', 'ja'],
     layout: { kind: 'sibling' },
@@ -184,28 +194,32 @@ test('DocSetProcessor can bootstrap README translations for multiple target lang
       model: 'openai/gpt-5-mini',
       apiKeyEnv: 'AI_GATEWAY_API_KEY'
     },
-    watch: {
-      ignore: ['**/node_modules/**', '**/.git/**', '**/dist/**', '**/.docplaybook/**']
-    }
+    ignorePatterns: ['**/node_modules/**', '**/.git/**', '**/dist/**', '**/.docplaybook/**']
   };
 
-  const provider = new LocalFolderProvider(root, config.watch?.ignore ?? []);
+  const provider = new LocalFolderProvider(root, config.ignorePatterns ?? []);
   const runtimeStore = new RuntimeStore(root);
   const translatorCalls: TranslationContext[] = [];
 
   const translator = {
-    async translateBlock(context: TranslationContext): Promise<string> {
+    async translateBlock(context: TranslationContext): Promise<{ text: string; usage: { inputTokens: number; outputTokens: number; totalTokens: number } }> {
       translatorCalls.push(context);
-      return translateMarkdownLikeModel(
-        context.sourceBlock,
-        `${context.targetLanguage.toUpperCase()}:`
-      );
+      return {
+        text: translateMarkdownLikeModel(
+          context.sourceBlock,
+          `${context.targetLanguage.toUpperCase()}:`
+        ),
+        usage: fakeUsage()
+      };
     }
   } as unknown as Translator;
 
   const memoryUpdater = {
-    async updateMemory(input: { memoryText: string; corrections: ManualCorrection[] }): Promise<string> {
-      return input.memoryText;
+    async updateMemory(input: { memoryText: string; corrections: ManualCorrection[] }): Promise<{ text: string; usage: { inputTokens: number; outputTokens: number; totalTokens: number } }> {
+      return {
+        text: input.memoryText,
+        usage: fakeUsage(0)
+      };
     }
   } as unknown as MemoryUpdater;
 
@@ -253,18 +267,21 @@ test('DocSetProcessor learns from human corrections and uses updated memory on f
     root,
     ['# 欢迎', '', '飞书知识库支持权限控制。', '', '第二段保持不变。', ''].join('\n')
   );
-  const provider = new LocalFolderProvider(root, config.watch?.ignore ?? []);
+  const provider = new LocalFolderProvider(root, config.ignorePatterns ?? []);
   const runtimeStore = new RuntimeStore(root);
   const translatorCalls: TranslationContext[] = [];
   const memoryUpdateCalls: ManualCorrection[][] = [];
 
   const translator = {
-    async translateBlock(context: TranslationContext): Promise<string> {
+    async translateBlock(context: TranslationContext): Promise<{ text: string; usage: { inputTokens: number; outputTokens: number; totalTokens: number } }> {
       translatorCalls.push(context);
       const hasLearnedWikiRule = context.memoryText.includes('Translate "知识库" as "Wiki"');
-      return hasLearnedWikiRule
-        ? translateMarkdownLikeModel(context.sourceBlock, 'EN_WITH_MEMORY:')
-        : translateMarkdownLikeModel(context.sourceBlock, 'EN:');
+      return {
+        text: hasLearnedWikiRule
+          ? translateMarkdownLikeModel(context.sourceBlock, 'EN_WITH_MEMORY:')
+          : translateMarkdownLikeModel(context.sourceBlock, 'EN:'),
+        usage: fakeUsage()
+      };
     }
   } as unknown as Translator;
 
@@ -272,9 +289,12 @@ test('DocSetProcessor learns from human corrections and uses updated memory on f
     async updateMemory(input: {
       memoryText: string;
       corrections: ManualCorrection[];
-    }): Promise<string> {
+    }): Promise<{ text: string; usage: { inputTokens: number; outputTokens: number; totalTokens: number } }> {
       memoryUpdateCalls.push(input.corrections);
-      return `${input.memoryText.trim()}\n- Translate "知识库" as "Wiki" for Feishu product docs.\n`;
+      return {
+        text: `${input.memoryText.trim()}\n- Translate "知识库" as "Wiki" for Feishu product docs.\n`,
+        usage: fakeUsage(30)
+      };
     }
   } as unknown as MemoryUpdater;
 
@@ -365,7 +385,7 @@ test('DocSetProcessor skips memory generation for large manual rewrites', async 
     ].join('\n')
   );
 
-  const provider = new LocalFolderProvider(root, config.watch?.ignore ?? []);
+  const provider = new LocalFolderProvider(root, config.ignorePatterns ?? []);
   const runtimeStore = new RuntimeStore(root);
   const memoryUpdateCalls: ManualCorrection[][] = [];
   let warningCount = 0;
@@ -379,15 +399,21 @@ test('DocSetProcessor skips memory generation for large manual rewrites', async 
   });
 
   const translator = {
-    async translateBlock(context: TranslationContext): Promise<string> {
-      return translateMarkdownLikeModel(context.sourceBlock, 'EN:');
+    async translateBlock(context: TranslationContext): Promise<{ text: string; usage: { inputTokens: number; outputTokens: number; totalTokens: number } }> {
+      return {
+        text: translateMarkdownLikeModel(context.sourceBlock, 'EN:'),
+        usage: fakeUsage()
+      };
     }
   } as unknown as Translator;
 
   const memoryUpdater = {
-    async updateMemory(input: { memoryText: string; corrections: ManualCorrection[] }): Promise<string> {
+    async updateMemory(input: { memoryText: string; corrections: ManualCorrection[] }): Promise<{ text: string; usage: { inputTokens: number; outputTokens: number; totalTokens: number } }> {
       memoryUpdateCalls.push(input.corrections);
-      return input.memoryText;
+      return {
+        text: input.memoryText,
+        usage: fakeUsage(0)
+      };
     }
   } as unknown as MemoryUpdater;
 
@@ -430,4 +456,136 @@ test('DocSetProcessor skips memory generation for large manual rewrites', async 
 
   const targetAfterSkip = await fs.readFile(path.join(root, 'docs/guide.en.md'), 'utf8');
   assert.equal(targetAfterSkip, rewrittenTarget);
+});
+
+test('DocSetProcessor strips outer markdown fences from translated blocks', async (t) => {
+  const root = await createTempWorkspace('strip-markdown-fence');
+  t.after(async () => {
+    await fs.rm(root, { recursive: true, force: true });
+  });
+
+  const runtimeHome = path.join(root, '.runtime');
+  const previousRuntimeHome = process.env.DOCPLAYBOOK_HOME;
+  process.env.DOCPLAYBOOK_HOME = runtimeHome;
+  t.after(() => {
+    if (previousRuntimeHome === undefined) {
+      delete process.env.DOCPLAYBOOK_HOME;
+    } else {
+      process.env.DOCPLAYBOOK_HOME = previousRuntimeHome;
+    }
+  });
+
+  const config = await setupWorkspace(
+    root,
+    ['# 欢迎', '', '列表说明。', ''].join('\n')
+  );
+  const provider = new LocalFolderProvider(root, config.ignorePatterns ?? []);
+  const runtimeStore = new RuntimeStore(root);
+
+  const translator = {
+    async translateBlock(context: TranslationContext): Promise<{ text: string; usage: { inputTokens: number; outputTokens: number; totalTokens: number } }> {
+      return {
+        text: ['```md', translateMarkdownLikeModel(context.sourceBlock, 'EN:'), '```'].join('\n'),
+        usage: fakeUsage()
+      };
+    }
+  } as unknown as Translator;
+
+  const memoryUpdater = {
+    async updateMemory(input: { memoryText: string; corrections: ManualCorrection[] }): Promise<{ text: string; usage: { inputTokens: number; outputTokens: number; totalTokens: number } }> {
+      return {
+        text: input.memoryText,
+        usage: fakeUsage(0)
+      };
+    }
+  } as unknown as MemoryUpdater;
+
+  const processor = new DocSetProcessor(
+    root,
+    config,
+    provider,
+    runtimeStore,
+    translator,
+    memoryUpdater,
+    new Set<string>()
+  );
+
+  const docSet = await loadGuideDocSet(root, config);
+  await processor.processDocSet(docSet, 'startup');
+
+  const targetRaw = await fs.readFile(path.join(root, 'docs/guide.en.md'), 'utf8');
+  assert.doesNotMatch(targetRaw, /```md/);
+  assert.doesNotMatch(targetRaw, /^```$/m);
+  assert.match(targetRaw, /^# EN:欢迎$/m);
+});
+
+test('DocSetProcessor batches consecutive translatable blocks into fewer model calls', async (t) => {
+  const root = await createTempWorkspace('batch-translation');
+  t.after(async () => {
+    await fs.rm(root, { recursive: true, force: true });
+  });
+
+  const runtimeHome = path.join(root, '.runtime');
+  const previousRuntimeHome = process.env.DOCPLAYBOOK_HOME;
+  process.env.DOCPLAYBOOK_HOME = runtimeHome;
+  t.after(() => {
+    if (previousRuntimeHome === undefined) {
+      delete process.env.DOCPLAYBOOK_HOME;
+    } else {
+      process.env.DOCPLAYBOOK_HOME = previousRuntimeHome;
+    }
+  });
+
+  const config = await setupWorkspace(
+    root,
+    ['# 标题', '', '第一段。', '', '第二段。', '', '第三段。', ''].join('\n')
+  );
+  const provider = new LocalFolderProvider(root, config.ignorePatterns ?? []);
+  const runtimeStore = new RuntimeStore(root);
+  let singleCalls = 0;
+  let batchCalls = 0;
+
+  const translator = {
+    async translateBlock(context: TranslationContext): Promise<{ text: string; usage: { inputTokens: number; outputTokens: number; totalTokens: number } }> {
+      singleCalls += 1;
+      return {
+        text: translateMarkdownLikeModel(context.sourceBlock, 'EN:'),
+        usage: fakeUsage()
+      };
+    },
+    async translateBlocks(input: {
+      blocks: Array<{ index: number; sourceBlock: string }>;
+    }): Promise<{ texts: string[]; usage: { inputTokens: number; outputTokens: number; totalTokens: number } }> {
+      batchCalls += 1;
+      return {
+        texts: input.blocks.map((block) => translateMarkdownLikeModel(block.sourceBlock, 'EN:')),
+        usage: fakeUsage(40)
+      };
+    }
+  } as unknown as Translator;
+
+  const memoryUpdater = {
+    async updateMemory(input: { memoryText: string; corrections: ManualCorrection[] }): Promise<{ text: string; usage: { inputTokens: number; outputTokens: number; totalTokens: number } }> {
+      return {
+        text: input.memoryText,
+        usage: fakeUsage(0)
+      };
+    }
+  } as unknown as MemoryUpdater;
+
+  const processor = new DocSetProcessor(
+    root,
+    config,
+    provider,
+    runtimeStore,
+    translator,
+    memoryUpdater,
+    new Set<string>()
+  );
+
+  const docSet = await loadGuideDocSet(root, config);
+  await processor.processDocSet(docSet, 'startup');
+
+  assert.equal(batchCalls, 1);
+  assert.equal(singleCalls, 0);
 });

@@ -1,9 +1,5 @@
 export type LayoutKind = 'sibling' | 'docusaurus' | 'rspress';
 
-export interface LocalProviderConfig {
-  kind: 'local';
-}
-
 export interface GatewayModelConfig {
   kind: 'gateway';
   model: string;
@@ -41,18 +37,23 @@ export type ModelConfig =
 
 export type ModelKind = ModelConfig['kind'];
 
-export interface AppConfig {
+export interface StoredAppConfig {
   version: 1;
-  provider: LocalProviderConfig;
   sourceLanguage: string;
   targetLanguages: string[];
+  ignorePatterns?: string[];
+  batch?: {
+    maxBlocksPerBatch?: number;
+    maxCharsPerBatch?: number;
+  };
   layout: {
     kind: LayoutKind;
   };
+  model?: ModelConfig;
+}
+
+export interface AppConfig extends StoredAppConfig {
   model: ModelConfig;
-  watch?: {
-    ignore?: string[];
-  };
 }
 
 export interface DocumentRef {
@@ -121,6 +122,27 @@ export interface ManualCorrection {
   sourceBlock: string;
   previousTranslation: string;
   correctedTranslation: string;
+}
+
+export interface ModelUsageStats {
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+}
+
+export interface TranslationResult {
+  text: string;
+  usage: ModelUsageStats;
+}
+
+export interface BatchTranslationResult {
+  texts: string[];
+  usage: ModelUsageStats;
+}
+
+export interface MemoryUpdateResult {
+  text: string;
+  usage: ModelUsageStats;
 }
 
 export interface ProviderEvent {

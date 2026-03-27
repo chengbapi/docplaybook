@@ -130,16 +130,20 @@ CLI 内部使用的核心对象有：
 - `anthropic`：使用官方 provider 包直接调用 Anthropic
 - `openai-compatible`：使用用户指定的 OpenAI 兼容端点，例如 OpenRouter 或自托管网关
 
+`.docplaybook/config.json` 按 JSONC 读取，所以可以包含 `//` 或 `/* ... */` 注释，方便把说明直接写在配置旁边。
+
 使用 Vercel AI Gateway 的 `.docplaybook/config.json` 示例：
 
 ```json
 {
   "version": 1,
-  "provider": {
-    "kind": "local"
-  },
   "sourceLanguage": "zh-CN",
   "targetLanguages": ["en", "ja"],
+  "ignorePatterns": ["**/node_modules/**", "**/.git/**", "**/dist/**", "**/.docplaybook/**"],
+  "batch": {
+    "maxBlocksPerBatch": 8,
+    "maxCharsPerBatch": 6000
+  },
   "layout": {
     "kind": "sibling"
   },
@@ -147,12 +151,13 @@ CLI 内部使用的核心对象有：
     "kind": "gateway",
     "model": "openai/gpt-5-mini",
     "apiKeyEnv": "AI_GATEWAY_API_KEY"
-  },
-  "watch": {
-    "ignore": ["**/node_modules/**", "**/.git/**", "**/dist/**", "**/.docplaybook/**"]
   }
 }
 ```
+
+`ignorePatterns` 只用来补充 docplaybook 自己的忽略规则；`.gitignore` 里的规则会默认一起生效，即使这里是空数组。
+
+`batch.maxBlocksPerBatch` 可以控制一次批量翻译最多合并多少个 block；如果你觉得长文档调用次数还是太多，可以先调这个值。
 
 `model` 这一段是明确交给用户控制的。API key 永远不应保存在仓库里：
 
@@ -310,7 +315,7 @@ npm run dev -- init ./examples/sample-workspace
 - 完成所需凭证配置，并在准备好后做一次轻量连通性检查
 - 再自动识别主文档语言，并让你确认
 - 然后提示输入 `en,ja` 这样的 target languages
-- 初始化配置后，立即执行第一次翻译
+- 创建 `.docplaybook` 目录以及初始化配置，不会立即开始翻译
 
 如果之后想继续添加语言，可以在同一个 workspace 里再次执行：
 
@@ -326,7 +331,7 @@ npm run dev -- init ./examples/sample-workspace
 npm run dev -- init ./examples/sample-workspace --source zh-CN --targets en,ja
 ```
 
-如果当时还没准备好 API key，`init` 也会先把配置写好，然后跳过首次翻译，并告诉你下一步该把哪些环境变量写到哪里。
+初始化完成后，你可以按需手动执行一次翻译，或者直接进入 watch 模式。
 
 使用 OpenAI 官方直连初始化：
 
@@ -346,16 +351,16 @@ npm run dev -- init ./examples/sample-workspace --model-kind anthropic --model c
 npm run dev -- init ./examples/sample-workspace --model-kind openai-compatible --provider-name openrouter --model google/gemini-2.5-flash --api-key-env OPENROUTER_API_KEY --base-url-env OPENROUTER_BASE_URL
 ```
 
-执行一次后退出：
+默认执行一次后退出：
 
 ```bash
-npm run dev -- ./examples/sample-workspace --once
+npm run dev -- ./examples/sample-workspace
 ```
 
 持续监听：
 
 ```bash
-npm run dev -- ./examples/sample-workspace
+npm run dev -- ./examples/sample-workspace --watch
 ```
 
 ## 调研记录

@@ -8,12 +8,15 @@ import { formatCliError } from './errors.js';
 import { detectWorkspaceSourceLanguage } from './init/detect-language.js';
 import {
   ensureModelEnvForInit,
+  getModelOverrideEnvValues,
   prepareInitModel,
   resolveInitModelConfig,
   testModelConnection
 } from './init/model-setup.js';
+import { getWorkspaceLocalEnvPath, writeWorkspaceEnvValues } from './env.js';
 import { canPrompt, confirmSourceLanguage, promptTargetLanguages } from './init/prompts.js';
 import type { LayoutKind, ModelKind } from './types.js';
+import { bold, cyan, green, label, setColorEnabled, yellow } from './ui.js';
 import { pathExists } from './utils.js';
 import { WorkspaceAgent } from './service/workspace-agent.js';
 
@@ -30,6 +33,12 @@ program
   .name('docplaybook')
   .description('A local-first CLI for Markdown translation sync and reusable translation memory.')
   .version('0.1.0');
+
+program.option('--no-color', 'Disable color output');
+program.hook('preAction', (_thisCommand, actionCommand) => {
+  const opts = actionCommand.optsWithGlobals();
+  setColorEnabled(Boolean(opts.color ?? true));
+});
 
 program
   .command('init')
@@ -93,7 +102,8 @@ program
             existingConfig && !modelFlagsExplicit
               ? existingConfig.model
               : await resolveInitModelConfig(modelOptions),
-          envSetup: undefined
+          envSetup: undefined,
+          scope: 'workspace' as const
         };
     const resolvedModel = preparedModel.model;
     const envSetup =
@@ -101,9 +111,9 @@ program
 
     if (!interactiveModelSetup && envSetup.ready) {
       console.log('');
-      console.log(`Testing model connectivity for ${resolvedModel.kind}...`);
+      console.log(`${cyan(bold('Testing model connectivity'))} ${resolvedModel.kind}`);
       await testModelConnection(resolvedModel);
-      console.log('Model connectivity check passed.');
+      console.log(green('Model connectivity check passed.'));
     }
 
     const sourceLanguage =
@@ -124,48 +134,51 @@ program
       sourceLanguage,
       targetLanguages: mergedTargets,
       layoutKind,
-      model: resolvedModel,
+      model: preparedModel.scope === 'workspace' ? resolvedModel : undefined,
       force: options.force
     });
 
-    console.log(`Initialized docplaybook in ${workspaceRoot}`);
+    if (preparedModel.scope === 'local') {
+      const overrideValues = getModelOverrideEnvValues(resolvedModel);
+      await writeWorkspaceEnvValues(workspaceRoot, overrideValues);
+      for (const [key, value] of Object.entries(overrideValues)) {
+        process.env[key] = value;
+      }
+    }
+
+    console.log(`${green(bold('Initialized docplaybook'))} ${workspaceRoot}`);
 
     if (envSetup.wroteValues) {
-      console.log(`Saved provider settings to ${envSetup.envPath}`);
+      console.log(`${label('env', 'green')} Saved provider settings to ${envSetup.envPath}`);
     }
 
-    if (!envSetup.ready) {
-      console.log('');
-      console.log('Skipped the first translation because required model credentials are not configured yet.');
-      console.log(`Missing: ${envSetup.missingLabels.join(', ')}`);
-      console.log(`Add them to ${envSetup.envPath} and run:`);
-      console.log(`  docplaybook ${workspaceRoot} --once`);
-      return;
+    if (preparedModel.scope === 'local') {
+      console.log(`${label('model', 'cyan')} Provider/model are stored locally in ${getWorkspaceLocalEnvPath(workspaceRoot)}.`);
+      console.log(`${label('hint', 'cyan')} Edit ${bold(getConfigPath(workspaceRoot))} if you want to lock them for everyone later.`);
     }
 
-    const config = await loadConfig(workspaceRoot);
-    const agent = new WorkspaceAgent(workspaceRoot, config);
-    await agent.runOnce();
+    console.log(`${label('next', 'cyan')} Run ${bold(`docplaybook ${workspaceRoot}`)} to translate once.`);
+    console.log(`${label('next', 'cyan')} Run ${bold(`docplaybook ${workspaceRoot} --watch`)} to start watching for changes.`);
   });
 
 program
-  .argument('[workspace]', 'Workspace folder to watch', '.')
-  .option('--once', 'Process current changes once and exit', false)
+  .argument('[workspace]', 'Workspace folder to process', '.')
+  .option('--watch', 'Watch for changes after the first run', false)
   .action(async (workspace, options) => {
     const workspaceRoot = path.resolve(workspace);
     await loadWorkspaceEnv(workspaceRoot);
     const config = await loadConfig(workspaceRoot);
     const agent = new WorkspaceAgent(workspaceRoot, config);
 
-    if (options.once) {
-      await agent.runOnce();
+    if (options.watch) {
+      await agent.watch();
       return;
     }
 
-    await agent.watch();
+    await agent.runOnce();
   });
 
 program.parseAsync(process.argv).catch((error: unknown) => {
-  console.error(formatCliError(error));
+  console.error(`${label('error', 'red')} ${formatCliError(error)}`);
   process.exit(1);
 });

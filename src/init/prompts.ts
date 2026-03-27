@@ -2,6 +2,7 @@ import { createInterface } from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
 import { UserFacingError } from '../errors.js';
 import type { ModelKind } from '../types.js';
+import { bold, cyan, dim, green, yellow } from '../ui.js';
 import type { DetectedLanguage } from './detect-language.js';
 
 export function canPrompt(): boolean {
@@ -19,6 +20,30 @@ async function askLine(question: string): Promise<string> {
 
 function choiceLabel(index: number, label: string): string {
   return `  ${index}) ${label}`;
+}
+
+function promptHeader(title: string, subtitle?: string): string {
+  return [
+    cyan(bold(title)),
+    subtitle ? dim(subtitle) : ''
+  ].filter(Boolean).join('\n');
+}
+
+function promptOption(index: number, label: string, options: {
+  recommended?: boolean;
+  selected?: boolean;
+  description?: string;
+} = {}): string {
+  const badges = [
+    options.recommended ? green('recommended') : '',
+    options.selected ? yellow('default') : ''
+  ].filter(Boolean);
+  const renderedLabel = badges.length > 0 ? `${label} ${dim(`(${badges.join(', ')})`)}` : label;
+
+  return [
+    choiceLabel(index, renderedLabel),
+    options.description ? `     ${dim(options.description)}` : ''
+  ].filter(Boolean).join('\n');
 }
 
 export async function promptModelKind(): Promise<ModelKind> {
@@ -47,12 +72,26 @@ export async function promptModelKindWithDefault(defaultKind: ModelKind): Promis
 
   const answer = await askLine(
     [
-      'Model provider:',
-      choiceLabel(1, 'OpenAI official (Recommended)'),
-      choiceLabel(2, 'Anthropic official'),
-      choiceLabel(3, 'Vercel AI Gateway'),
-      choiceLabel(4, 'OpenAI-compatible custom provider'),
-      `Choose a provider [${defaultChoice}]: `
+      promptHeader('Model Provider', 'Choose how docplaybook should call the model.'),
+      promptOption(1, 'OpenAI official', {
+        recommended: true,
+        selected: defaultChoice === '1',
+        description: 'Best default if you are using the official OpenAI API directly.'
+      }),
+      promptOption(2, 'Anthropic official', {
+        selected: defaultChoice === '2',
+        description: 'Use Anthropic directly with an API key or auth token.'
+      }),
+      promptOption(3, 'Vercel AI Gateway', {
+        selected: defaultChoice === '3',
+        description: 'Use a gateway model string such as openai/gpt-5-mini.'
+      }),
+      promptOption(4, 'OpenAI-compatible custom provider', {
+        selected: defaultChoice === '4',
+        description: 'Use OpenRouter or any other compatible base URL.'
+      }),
+      '',
+      `${bold('Provider')} [${defaultChoice}]: `
     ].join('\n')
   );
 
@@ -75,7 +114,12 @@ export async function promptModelId(defaultValue: string): Promise<string> {
     return defaultValue;
   }
 
-  const answer = await askLine(`Model ID [${defaultValue}]: `);
+  const answer = await askLine(
+    [
+      promptHeader('Model ID', 'Enter the exact model identifier to use for translation.'),
+      `${bold('Model ID')} [${defaultValue}]: `
+    ].join('\n')
+  );
   return answer.trim() || defaultValue;
 }
 
@@ -86,11 +130,12 @@ export async function promptRetryModelSetupStep(): Promise<1 | 2 | 3> {
 
   const answer = await askLine(
     [
-      'Choose where to go back:',
-      choiceLabel(1, 'Provider'),
-      choiceLabel(2, 'Model'),
-      choiceLabel(3, 'Credentials'),
-      'Retry from step [2]: '
+      promptHeader('Retry Model Setup', 'Choose which step to revisit before trying the connectivity check again.'),
+      promptOption(1, 'Provider'),
+      promptOption(2, 'Model', { selected: true }),
+      promptOption(3, 'Credentials'),
+      '',
+      `${bold('Retry from step')} [2]: `
     ].join('\n')
   );
 
@@ -106,13 +151,47 @@ export async function promptRetryModelSetupStep(): Promise<1 | 2 | 3> {
   }
 }
 
+export async function promptModelScope(): Promise<'workspace' | 'local'> {
+  if (!canPrompt()) {
+    return 'workspace';
+  }
+
+  const answer = await askLine(
+    [
+      promptHeader('Model Scope', 'Choose whether the provider/model should be shared in config or kept local to your machine.'),
+      promptOption(1, 'Lock in workspace config', {
+        recommended: true,
+        selected: true,
+        description: 'Everyone using this repo will default to the same provider and model.'
+      }),
+      promptOption(2, 'Keep model local only', {
+        description: 'Provider/model go to .docplaybook/.env.local, so teammates can choose their own.'
+      }),
+      '',
+      `${bold('Scope')} [1]: `
+    ].join('\n')
+  );
+
+  switch (answer.trim() || '1') {
+    case '1':
+      return 'workspace';
+    case '2':
+      return 'local';
+    default:
+      throw new UserFacingError('Unknown scope choice. Please choose 1 or 2.');
+  }
+}
+
 export async function promptProviderName(defaultValue = 'custom-provider'): Promise<string> {
   if (!canPrompt()) {
     return defaultValue;
   }
 
   const answer = await askLine(
-    `Provider name (used in config labels) [${defaultValue}]: `
+    [
+      promptHeader('Provider Name', 'Used for labels and env var naming in openai-compatible mode.'),
+      `${bold('Provider name')} [${defaultValue}]: `
+    ].join('\n')
   );
   return answer.trim() || defaultValue;
 }
@@ -134,56 +213,7 @@ export async function promptSecret(question: string): Promise<string> {
   if (!canPrompt()) {
     return '';
   }
-
-  output.write(question);
-
-  const stream = input;
-  const previousRawMode = stream.isTTY ? stream.isRaw : false;
-
-  if (stream.isTTY) {
-    stream.setRawMode(true);
-  }
-
-  stream.resume();
-
-  return new Promise((resolve, reject) => {
-    let value = '';
-
-    const cleanup = () => {
-      stream.off('data', onData);
-      if (stream.isTTY) {
-        stream.setRawMode(previousRawMode);
-      }
-      output.write('\n');
-    };
-
-    const onData = (chunk: Buffer) => {
-      const text = chunk.toString('utf8');
-
-      for (const char of text) {
-        if (char === '\u0003') {
-          cleanup();
-          reject(new UserFacingError('Cancelled.'));
-          return;
-        }
-
-        if (char === '\r' || char === '\n') {
-          cleanup();
-          resolve(value.trim());
-          return;
-        }
-
-        if (char === '\u007f') {
-          value = value.slice(0, -1);
-          continue;
-        }
-
-        value += char;
-      }
-    };
-
-    stream.on('data', onData);
-  });
+  return askLine(question);
 }
 
 export async function confirmSourceLanguage(
@@ -196,7 +226,7 @@ export async function confirmSourceLanguage(
   const defaultLanguage = detected?.language ?? 'zh-CN';
   const answer = await askLine(
     detected
-      ? `Detected source language: ${defaultLanguage}. Press Enter to accept, or type another language code (for example: en, zh-CN, ja): `
+      ? `Detected source language: ${defaultLanguage}. Enter another language code if you want to change it (for example: en, zh-CN, ja) [${defaultLanguage}]: `
       : `Could not detect the source language. Type a language code (for example: en, zh-CN, ja) [${defaultLanguage}]: `
   );
 
@@ -214,19 +244,25 @@ export async function promptTargetLanguages(existingTargets: string[]): Promise<
     );
   }
 
-  const question =
-    existingTargets.length === 0
-      ? 'Target languages (comma-separated, e.g. en,ja): '
-      : `Target languages to add (comma-separated). Existing: ${existingTargets.join(', ')}. Leave empty to keep current targets: `;
-  const answer = await askLine(question);
-  const values = answer
-    .split(',')
-    .map((value) => value.trim())
-    .filter(Boolean);
+  while (true) {
+    const question =
+      existingTargets.length === 0
+        ? 'Target languages (comma-separated, e.g. en,ja): '
+        : `Target languages to add (comma-separated). Existing: ${existingTargets.join(', ')} [leave empty to keep current]: `;
+    const answer = await askLine(question);
+    const values = answer
+      .split(',')
+      .map((value) => value.trim())
+      .filter(Boolean);
 
-  if (values.length === 0 && existingTargets.length === 0) {
-    throw new UserFacingError('At least one target language is required.');
+    if (values.length > 0) {
+      return values;
+    }
+
+    if (existingTargets.length > 0) {
+      return [];
+    }
+
+    console.log(yellow('At least one target language is required.'));
   }
-
-  return values;
 }

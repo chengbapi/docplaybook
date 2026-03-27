@@ -6,6 +6,7 @@ import { RuntimeStore } from '../state/runtime-store.js';
 import { createModelHandle } from '../model/model-factory.js';
 import { Translator } from '../translation/translator.js';
 import { MemoryUpdater } from '../translation/memory-updater.js';
+import { label } from '../ui.js';
 import { DocSetProcessor } from './docset-processor.js';
 
 export class WorkspaceAgent {
@@ -23,7 +24,7 @@ export class WorkspaceAgent {
     private readonly config: AppConfig
   ) {
     this.layoutAdapter = createLayoutAdapter(config.layout.kind);
-    this.provider = new LocalFolderProvider(workspaceRoot, config.watch?.ignore ?? []);
+    this.provider = new LocalFolderProvider(workspaceRoot, config.ignorePatterns ?? []);
     this.runtimeStore = new RuntimeStore(workspaceRoot);
     const modelHandle = createModelHandle(config.model);
     this.processor = new DocSetProcessor(
@@ -50,7 +51,7 @@ export class WorkspaceAgent {
       await this.onEvent(event);
     });
 
-    console.log(`[watch] Watching ${this.workspaceRoot} (${this.docSets.length} doc set(s)). Press Ctrl+C to stop.`);
+    console.log(`${label('watch', 'cyan')} Watching ${this.workspaceRoot} (${this.docSets.length} doc set(s)).`);
 
     const stop = async () => {
       await close();
@@ -103,7 +104,7 @@ export class WorkspaceAgent {
     const timer = setTimeout(() => {
       void this.processor.processDocSet(docSet, reason).catch((error: unknown) => {
         const message = error instanceof Error ? error.stack ?? error.message : String(error);
-        console.error(`[error] Failed to process ${docSet.docKey}: ${message}`);
+        console.error(`${label('error', 'red')} Failed to process ${docSet.docKey}: ${message}`);
       });
       this.scheduled.delete(docSet.id);
     }, 250);

@@ -5,6 +5,7 @@ import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import { detectWorkspaceSourceLanguage } from '../src/init/detect-language.ts';
 import { getConfigPath, initWorkspaceConfig, loadConfig } from '../src/config.ts';
+import { LocalFolderProvider } from '../src/providers/local-folder-provider.ts';
 
 async function createTempWorkspace(testName: string): Promise<string> {
   return fs.mkdtemp(path.join(os.tmpdir(), `docplaybook-init-${testName}-`));
@@ -86,5 +87,99 @@ test('initWorkspaceConfig merges target languages on repeated init', async (t) =
 
   const configPath = getConfigPath(root);
   const raw = await fs.readFile(configPath, 'utf8');
-  assert.match(raw, /"targetLanguages": \[\n    "en",\n    "ja"\n  ]/);
+  assert.match(raw, /"targetLanguages": \["en","ja"]/);
+  assert.match(raw, /"ignorePatterns": \["\*\*\/node_modules\/\*\*","\*\*\/\.git\/\*\*","\*\*\/dist\/\*\*","\*\*\/\.docplaybook\/\*\*"]/);
+  assert.match(raw, /"maxBlocksPerBatch": 8/);
+});
+
+test('loadConfig supports comments in .docplaybook/config.json', async (t) => {
+  const root = await createTempWorkspace('config-comments');
+  t.after(async () => {
+    await fs.rm(root, { recursive: true, force: true });
+  });
+
+  await fs.mkdir(path.join(root, '.docplaybook'), { recursive: true });
+  await fs.writeFile(
+    path.join(root, '.docplaybook', 'config.json'),
+    [
+      '{',
+      '  // Workspace translation settings',
+      '  "version": 1,',
+      '  "sourceLanguage": "zh-CN",',
+      '  "targetLanguages": [',
+      '    "en", // English docs',
+      '    "ja"',
+      '  ],',
+      '  "layout": {',
+      '    "kind": "sibling"',
+      '  },',
+      '  "model": {',
+      '    "kind": "openai",',
+      '    "model": "gpt-5-mini",',
+      '    "apiKeyEnv": "OPENAI_API_KEY"',
+      '  },',
+      '  "ignorePatterns": [',
+      '    "**/.docplaybook/**"',
+      '  ]',
+      '}',
+      ''
+    ].join('\n'),
+    'utf8'
+  );
+
+  const config = await loadConfig(root);
+
+  assert.equal(config.sourceLanguage, 'zh-CN');
+  assert.deepEqual(config.targetLanguages, ['en', 'ja']);
+  assert.equal(config.model.kind, 'openai');
+});
+
+test('loadConfig rejects legacy watch.ignore config', async (t) => {
+  const root = await createTempWorkspace('reject-legacy-watch-ignore');
+  t.after(async () => {
+    await fs.rm(root, { recursive: true, force: true });
+  });
+
+  await fs.mkdir(path.join(root, '.docplaybook'), { recursive: true });
+  await fs.writeFile(
+    path.join(root, '.docplaybook', 'config.json'),
+    [
+      '{',
+      '  "version": 1,',
+      '  "sourceLanguage": "zh-CN",',
+      '  "targetLanguages": ["en"],',
+      '  "layout": { "kind": "sibling" },',
+      '  "model": {',
+      '    "kind": "openai",',
+      '    "model": "gpt-5-mini"',
+      '  },',
+      '  "watch": {',
+      '    "ignore": ["**/.docplaybook/**"]',
+      '  }',
+      '}',
+      ''
+    ].join('\n'),
+    'utf8'
+  );
+
+  await assert.rejects(() => loadConfig(root), /Invalid docplaybook config|Unrecognized key/);
+});
+
+test('LocalFolderProvider applies .gitignore rules in addition to ignorePatterns', async (t) => {
+  const root = await createTempWorkspace('gitignore-defaults');
+  t.after(async () => {
+    await fs.rm(root, { recursive: true, force: true });
+  });
+
+  await fs.writeFile(path.join(root, '.gitignore'), 'ignored-docs/\n*.secret.md\n', 'utf8');
+  await fs.mkdir(path.join(root, 'ignored-docs'), { recursive: true });
+  await fs.mkdir(path.join(root, 'docs'), { recursive: true });
+  await fs.writeFile(path.join(root, 'ignored-docs', 'a.md'), '# hidden\n', 'utf8');
+  await fs.writeFile(path.join(root, 'docs', 'guide.secret.md'), '# hidden too\n', 'utf8');
+  await fs.writeFile(path.join(root, 'docs', 'guide.md'), '# visible\n', 'utf8');
+
+  const provider = new LocalFolderProvider(root, []);
+  const files = await provider.scanMarkdownFiles();
+
+  assert.deepEqual(files, ['docs/guide.md']);
 });

@@ -6,6 +6,7 @@ export function buildTranslationSystemPrompt(context: TranslationContext): strin
     `Translate from ${context.sourceLanguage} to ${context.targetLanguage}.`,
     'Preserve Markdown structure, links, emphasis, and inline code.',
     'Do not add explanations, notes, or commentary.',
+    'Do not wrap the result in triple backticks or fenced code blocks.',
     'Keep tone consistent with technical documentation.',
     'If the source block should remain unchanged, return it unchanged.',
     '',
@@ -28,7 +29,43 @@ export function buildTranslationPrompt(context: TranslationContext): string {
     context.existingTranslation?.trim() || '',
     '```',
     '',
-    'Return only the translated Markdown block.'
+    'Return only the translated Markdown block.',
+    'Do not add ```md, ```markdown, or any other fenced code wrapper.'
+  ].join('\n');
+}
+
+export function buildBatchTranslationPrompt(input: {
+  docKey: string;
+  blocks: Array<{
+    index: number;
+    sourceBlock: string;
+    existingTranslation?: string;
+  }>;
+}): string {
+  return [
+    `Document key: ${input.docKey}`,
+    '',
+    'Translate each block independently.',
+    'Return the translated blocks in the same order.',
+    'Use the exact separator line `<<<DOCPLAYBOOK_BLOCK>>>` between blocks.',
+    'Do not add numbering, explanations, or fenced code blocks.',
+    '',
+    ...input.blocks.flatMap((block, idx) => [
+      `Block ${idx + 1} (source index ${block.index}):`,
+      'Source block:',
+      '```md',
+      block.sourceBlock.trim(),
+      '```',
+      '',
+      'Existing translation (if any):',
+      '```md',
+      block.existingTranslation?.trim() || '',
+      '```',
+      '',
+      idx < input.blocks.length - 1 ? '<<<DOCPLAYBOOK_BLOCK_INPUT>>>' : ''
+    ]).filter(Boolean),
+    '',
+    'Return only the translated blocks, separated by `<<<DOCPLAYBOOK_BLOCK>>>`.'
   ].join('\n');
 }
 

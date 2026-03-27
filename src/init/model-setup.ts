@@ -9,11 +9,13 @@ import {
 import { createModelHandle } from '../model/model-factory.js';
 import { UserFacingError } from '../errors.js';
 import type { ModelConfig, ModelKind } from '../types.js';
+import { bold, cyan, green, red, yellow } from '../ui.js';
 import {
   canPrompt,
   promptModelId,
   promptModelKind,
   promptModelKindWithDefault,
+  promptModelScope,
   promptOptionalValue,
   promptProviderName,
   promptRetryModelSetupStep,
@@ -39,6 +41,7 @@ export interface EnsureModelEnvResult {
 export interface PrepareInitModelResult {
   model: ModelConfig;
   envSetup: EnsureModelEnvResult;
+  scope: 'workspace' | 'local';
 }
 
 export type ModelConnectionTester = (input: {
@@ -108,15 +111,15 @@ export async function ensureModelEnvForInit(
   if (canPrompt()) {
     const requirements = options.forcePrompt ? getModelEnvRequirements(model) : missing;
     console.log('');
-    console.log(`Model setup for ${model.kind}:`);
+    console.log(`${cyan(bold('Model setup'))} ${model.kind}`);
 
     for (const requirement of requirements) {
       const envNames = requirement.names.join(' or ');
       const value = await promptRequiredRequirementValue({
         secret: requirement.secret,
         prompt: requirement.secret
-          ? `${requirement.label} is required (${envNames}). Paste it now. Press Ctrl+C to cancel: `
-          : `${requirement.label} is required (${envNames}). Enter it now. Press Ctrl+C to cancel`
+          ? `${requirement.label} (${envNames}): `
+          : `${requirement.label} (${envNames}): `
       });
 
       nextValues[requirement.saveToEnvName] = value;
@@ -151,7 +154,7 @@ async function promptRequiredRequirementValue(input: {
       return value.trim();
     }
 
-    console.log('This value is required to continue model setup.');
+    console.log(yellow('This value is required.'));
   }
 }
 
@@ -165,21 +168,22 @@ export async function prepareInitModel(
       ? await resolveInteractiveInitModelConfig(currentOptions)
       : await resolveInitModelConfig(currentOptions);
   let envSetup = await ensureModelEnvForInit(workspaceRoot, model);
+  const scope = canPrompt() ? await promptModelScope() : 'workspace';
 
   while (envSetup.ready) {
     try {
       console.log('');
-      console.log(`Testing model connectivity for ${model.kind}...`);
+      console.log(`${cyan(bold('Testing model connectivity'))} ${model.kind}`);
       await testModelConnection(model);
-      console.log('Model connectivity check passed.');
-      return { model, envSetup };
+      console.log(green('Model connectivity check passed.'));
+      return { model, envSetup, scope };
     } catch (error) {
       if (!canPrompt()) {
         throw error;
       }
 
       console.log('');
-      console.log(error instanceof Error ? error.message : String(error));
+      console.log(red(error instanceof Error ? error.message : String(error)));
 
       const retryStep = await promptRetryModelSetupStep();
 
@@ -209,7 +213,7 @@ export async function prepareInitModel(
     }
   }
 
-  return { model, envSetup };
+  return { model, envSetup, scope };
 }
 
 async function resolveInteractiveInitModelConfig(
@@ -243,5 +247,39 @@ export async function testModelConnection(
     throw new UserFacingError(
       `Model connectivity check failed for ${handle.label}. ${message}`
     );
+  }
+}
+
+export function getModelOverrideEnvValues(model: ModelConfig): Record<string, string> {
+  switch (model.kind) {
+    case 'gateway':
+      return {
+        DOCPLAYBOOK_MODEL_KIND: model.kind,
+        DOCPLAYBOOK_MODEL: model.model,
+        DOCPLAYBOOK_MODEL_API_KEY_ENV: model.apiKeyEnv ?? 'AI_GATEWAY_API_KEY'
+      };
+    case 'openai':
+      return {
+        DOCPLAYBOOK_MODEL_KIND: model.kind,
+        DOCPLAYBOOK_MODEL: model.model,
+        DOCPLAYBOOK_MODEL_API_KEY_ENV: model.apiKeyEnv ?? 'OPENAI_API_KEY',
+        ...(model.baseUrlEnv ? { DOCPLAYBOOK_MODEL_BASE_URL_ENV: model.baseUrlEnv } : {})
+      };
+    case 'anthropic':
+      return {
+        DOCPLAYBOOK_MODEL_KIND: model.kind,
+        DOCPLAYBOOK_MODEL: model.model,
+        ...(model.apiKeyEnv ? { DOCPLAYBOOK_MODEL_API_KEY_ENV: model.apiKeyEnv } : {}),
+        ...(model.authTokenEnv ? { DOCPLAYBOOK_MODEL_AUTH_TOKEN_ENV: model.authTokenEnv } : {}),
+        ...(model.baseUrlEnv ? { DOCPLAYBOOK_MODEL_BASE_URL_ENV: model.baseUrlEnv } : {})
+      };
+    case 'openai-compatible':
+      return {
+        DOCPLAYBOOK_MODEL_KIND: model.kind,
+        DOCPLAYBOOK_MODEL: model.model,
+        DOCPLAYBOOK_MODEL_PROVIDER_NAME: model.providerName,
+        DOCPLAYBOOK_MODEL_API_KEY_ENV: model.apiKeyEnv,
+        DOCPLAYBOOK_MODEL_BASE_URL_ENV: model.baseUrlEnv
+      };
   }
 }

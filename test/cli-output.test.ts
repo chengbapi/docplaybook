@@ -52,7 +52,7 @@ test('CLI shows a friendly missing-config message without a stack trace', async 
     await fs.rm(workspaceRoot, { recursive: true, force: true });
   });
 
-  const result = await runCli([workspaceRoot, '--once'], process.cwd());
+  const result = await runCli([workspaceRoot], process.cwd());
 
   assert.equal(result.code, 1);
   assert.equal(result.stdout, '');
@@ -62,7 +62,7 @@ test('CLI shows a friendly missing-config message without a stack trace', async 
   assert.doesNotMatch(result.stderr, /loadConfig/);
 });
 
-test('init saves config and skips the first translation when credentials are missing', async (t) => {
+test('init saves config without running the first translation', async (t) => {
   const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'docplaybook-init-output-'));
   t.after(async () => {
     await fs.rm(workspaceRoot, { recursive: true, force: true });
@@ -86,8 +86,8 @@ test('init saves config and skips the first translation when credentials are mis
   assert.equal(result.code, 0);
   assert.equal(result.stderr, '');
   assert.match(result.stdout, /Initialized docplaybook/);
-  assert.match(result.stdout, /Skipped the first translation because required model credentials are not configured yet\./);
-  assert.match(result.stdout, /OPENAI_API_KEY/);
+  assert.match(result.stdout, /Run .* to translate once\./);
+  assert.match(result.stdout, /Run .*--watch/);
 
   const configPath = path.join(workspaceRoot, '.docplaybook', 'config.json');
   const targetPath = path.join(workspaceRoot, 'README.en.md');

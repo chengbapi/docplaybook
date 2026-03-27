@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "sourceLanguage": "zh-CN",
+  "targetLanguages": ["en","ja"],
+  // Additional ignore globs for docplaybook scanning and watch.
+  // .gitignore rules are also applied by default, even if this array is empty.
+  "ignorePatterns": ["**/node_modules/**","**/.git/**","**/dist/**","**/.docplaybook/**", "examples/**"],
+  // Batching reduces repeated prompt overhead on long documents.
+  "batch": {
+    "maxBlocksPerBatch": 8,
+    "maxCharsPerBatch": 6000
+  },
+  "layout": {
+    "kind": "sibling"
+  },
+  "model": {
+    "kind": "openai",
+    "model": "gpt-5-mini",
+    "apiKeyEnv": "OPENAI_API_KEY",
+    "baseUrlEnv": "OPENAI_BASE_URL"
+  }
+}
