@@ -158,22 +158,15 @@ program
     }
 
     console.log(`${label('next', 'cyan')} Run ${bold(`docplaybook ${workspaceRoot}`)} to translate once.`);
-    console.log(`${label('next', 'cyan')} Run ${bold(`docplaybook ${workspaceRoot} --watch`)} to start watching for changes.`);
   });
 
 program
   .argument('[workspace]', 'Workspace folder to process', '.')
-  .option('--watch', 'Watch for changes after the first run', false)
-  .action(async (workspace, options) => {
+  .action(async (workspace) => {
     const workspaceRoot = path.resolve(workspace);
     await loadWorkspaceEnv(workspaceRoot);
     const config = await loadConfig(workspaceRoot);
     const agent = new WorkspaceAgent(workspaceRoot, config);
-
-    if (options.watch) {
-      await agent.watch();
-      return;
-    }
 
     await agent.runOnce();
   });

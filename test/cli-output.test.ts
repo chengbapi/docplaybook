@@ -87,7 +87,6 @@ test('init saves config without running the first translation', async (t) => {
   assert.equal(result.stderr, '');
   assert.match(result.stdout, /Initialized docplaybook/);
   assert.match(result.stdout, /Run .* to translate once\./);
-  assert.match(result.stdout, /Run .*--watch/);
 
   const configPath = path.join(workspaceRoot, '.docplaybook', 'config.json');
   const targetPath = path.join(workspaceRoot, 'README.en.md');

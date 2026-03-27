@@ -1,4 +1,5 @@
 import { generateText } from 'ai';
+import { randomUUID } from 'node:crypto';
 import type {
   BatchTranslationResult,
   ModelUsageStats,
@@ -11,8 +12,6 @@ import {
   buildTranslationSystemPrompt
 } from './prompts.js';
 import type { ModelHandle } from '../model/model-factory.js';
-
-const BLOCK_SEPARATOR = '<<<DOCPLAYBOOK_BLOCK>>>';
 
 export class Translator {
   public constructor(private readonly modelHandle: ModelHandle) {}
@@ -41,6 +40,10 @@ export class Translator {
       existingTranslation?: string;
     }>;
   }): Promise<BatchTranslationResult> {
+    const blocksWithIds = input.blocks.map((block) => ({
+      ...block,
+      id: randomUUID().slice(0, 8)
+    }));
     const result = await generateText({
       model: this.modelHandle.model,
       system: buildTranslationSystemPrompt({
@@ -50,10 +53,13 @@ export class Translator {
         sourceBlock: '',
         docKey: input.docKey
       }),
-      prompt: buildBatchTranslationPrompt(input)
+      prompt: buildBatchTranslationPrompt({
+        ...input,
+        blocks: blocksWithIds
+      })
     });
 
-    const texts = splitBatchTranslation(result.text, input.blocks.length);
+    const texts = parseBatchTranslation(result.text, blocksWithIds);
 
     return {
       texts,
@@ -71,17 +77,43 @@ function stripOuterMarkdownFence(text: string): string {
   return match[1] ?? text;
 }
 
-function splitBatchTranslation(text: string, expectedCount: number): string[] {
-  const normalized = text.trim();
-  const parts = normalized.split(BLOCK_SEPARATOR).map((part) => stripOuterMarkdownFence(part.trim()));
+function parseBatchTranslation(
+  text: string,
+  expectedBlocks: Array<{ id: string }>
+): string[] {
+  const normalized = stripOuterMarkdownFence(text.trim());
+  const jsonMatch = normalized.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) {
+    throw new Error('Batch translation did not return JSON.');
+  }
 
-  if (parts.length !== expectedCount) {
+  const parsed = JSON.parse(jsonMatch[0]) as {
+    blocks?: Array<{ id?: unknown; text?: unknown }>;
+  };
+  const returnedBlocks = parsed.blocks ?? [];
+  if (returnedBlocks.length !== expectedBlocks.length) {
     throw new Error(
-      `Batch translation returned ${parts.length} block(s), expected ${expectedCount}.`
+      `Batch translation returned ${returnedBlocks.length} block(s), expected ${expectedBlocks.length}.`
     );
   }
 
-  return parts;
+  const textById = new Map<string, string>();
+  for (const block of returnedBlocks) {
+    if (typeof block.id !== 'string' || typeof block.text !== 'string') {
+      throw new Error('Batch translation returned an invalid block entry.');
+    }
+
+    textById.set(block.id, stripOuterMarkdownFence(block.text.trim()));
+  }
+
+  return expectedBlocks.map((block) => {
+    const translated = textById.get(block.id);
+    if (!translated) {
+      throw new Error(`Batch translation omitted block id ${block.id}.`);
+    }
+
+    return translated;
+  });
 }
 
 function normalizeUsage(usage: {

@@ -37,6 +37,7 @@ export function buildTranslationPrompt(context: TranslationContext): string {
 export function buildBatchTranslationPrompt(input: {
   docKey: string;
   blocks: Array<{
+    id: string;
     index: number;
     sourceBlock: string;
     existingTranslation?: string;
@@ -46,12 +47,14 @@ export function buildBatchTranslationPrompt(input: {
     `Document key: ${input.docKey}`,
     '',
     'Translate each block independently.',
-    'Return the translated blocks in the same order.',
-    'Use the exact separator line `<<<DOCPLAYBOOK_BLOCK>>>` between blocks.',
+    'Return every translated block with its original block id.',
+    'Preserve the exact ids you were given.',
     'Do not add numbering, explanations, or fenced code blocks.',
+    'Return strict JSON only with this shape:',
+    '{"blocks":[{"id":"...", "text":"..."}]}',
     '',
     ...input.blocks.flatMap((block, idx) => [
-      `Block ${idx + 1} (source index ${block.index}):`,
+      `Block ${idx + 1} (id ${block.id}, source index ${block.index}):`,
       'Source block:',
       '```md',
       block.sourceBlock.trim(),
@@ -62,10 +65,8 @@ export function buildBatchTranslationPrompt(input: {
       block.existingTranslation?.trim() || '',
       '```',
       '',
-      idx < input.blocks.length - 1 ? '<<<DOCPLAYBOOK_BLOCK_INPUT>>>' : ''
+      idx < input.blocks.length - 1 ? '---' : ''
     ]).filter(Boolean),
-    '',
-    'Return only the translated blocks, separated by `<<<DOCPLAYBOOK_BLOCK>>>`.'
   ].join('\n');
 }
 
@@ -103,6 +104,7 @@ export function buildMemoryUpdatePrompt(input: {
     'Update the playbook using the corrections below.',
     'Keep the file concise, deduplicated, and written for future LLM prompts.',
     'Only keep reusable translation guidance. Ignore one-off content edits.',
+    'If a new rule conflicts with an older rule, keep the new rule and remove or rewrite the old one.',
     'Do not add ```md, ```markdown, or any other fenced code wrapper.',
     'Return the full updated Markdown file and nothing else.',
     '',

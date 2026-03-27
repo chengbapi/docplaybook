@@ -10,7 +10,7 @@ import { parseMarkdownSnapshot, getChangedBlockIndexes, renderSnapshot, snapshot
 import { MemoryStore } from '../memories/memory-store.js';
 import { Translator } from '../translation/translator.js';
 import { MemoryUpdater } from '../translation/memory-updater.js';
-import { createLiveLine, formatDuration, label } from '../ui.js';
+import { formatDuration, label } from '../ui.js';
 import { nowIso } from '../utils.js';
 import { RuntimeStore } from '../state/runtime-store.js';
 import { LocalFolderProvider } from '../providers/local-folder-provider.js';
@@ -53,8 +53,6 @@ export class DocSetProcessor {
       MAX_MAX_CONCURRENT_REQUESTS,
       this.config.concurrency?.maxConcurrentRequests ?? DEFAULT_MAX_CONCURRENT_REQUESTS
     );
-    const liveSync = createLiveLine('sync', 'blue');
-    const targetProgress = new Map<string, { completed: number; total: number }>();
 
     for (const targetLanguage of this.config.targetLanguages) {
       const targetRef = docSet.targets[targetLanguage];
@@ -65,7 +63,6 @@ export class DocSetProcessor {
         const targetRaw = await this.provider.read(targetRef.relativePath);
         const currentTargetSnapshot = parseMarkdownSnapshot(targetRef.relativePath, targetRaw);
         if (previousTargetState?.generated && currentTargetSnapshot.hash !== previousTargetState.generated.hash) {
-          liveSync.clear();
           console.log(
             `${label('revise', 'yellow')} Detected manual edits in ${targetRef.relativePath}.`
           );
@@ -142,15 +139,7 @@ export class DocSetProcessor {
           sourceSnapshot: currentSourceSnapshot,
           targetLanguage,
           reason,
-          requestPool,
-          onPending: (targetPath, total) => {
-            targetProgress.set(targetPath, { completed: 0, total });
-            this.renderSyncProgress(liveSync, docSet.source.relativePath, targetProgress);
-          },
-          onProgress: (targetPath, completed, total) => {
-            targetProgress.set(targetPath, { completed, total });
-            this.renderSyncProgress(liveSync, docSet.source.relativePath, targetProgress);
-          }
+          requestPool
         });
 
         return {
@@ -174,7 +163,6 @@ export class DocSetProcessor {
     docState.updatedAt = nowIso();
     state.docSets[docSet.id] = docState;
     await this.runtimeStore.save(state);
-    liveSync.clear();
 
     console.log(
       `${label('done', 'green')} ${docSet.source.relativePath} finished in ${formatDuration(Date.now() - startedAt)} (input: ${totals.inputTokens}, output: ${totals.outputTokens}, total: ${totals.totalTokens}).`
@@ -188,8 +176,6 @@ export class DocSetProcessor {
     targetLanguage: string;
     reason: string;
     requestPool: RequestPool;
-    onPending: (targetPath: string, total: number) => void;
-    onProgress: (targetPath: string, completed: number, total: number) => void;
   }): Promise<{
     snapshot: DocumentSnapshot;
     usage: ModelUsageStats;
@@ -231,11 +217,7 @@ export class DocSetProcessor {
 
         return shouldTranslate || !existingTranslation;
       });
-    const pendingCount = pendingBlocks.length;
-    let completedCount = 0;
     const usage = zeroUsage();
-
-    input.onPending(targetRef.relativePath, pendingCount);
 
     for (const block of input.sourceSnapshot.blocks) {
       const existingTranslation = previousTargetSnapshot?.blocks[block.index]?.raw;
@@ -273,8 +255,6 @@ export class DocSetProcessor {
           );
 
           addUsage(usage, batchResult.usage);
-          completedCount += batchResult.items.length;
-          input.onProgress(targetRef.relativePath, completedCount, pendingCount);
 
           return {
             batch,
@@ -304,17 +284,6 @@ export class DocSetProcessor {
 
     const nextSnapshot = parseMarkdownSnapshot(targetRef.relativePath, nextRaw);
 
-    if (translatedIndexes.length > 0) {
-      input.onProgress(targetRef.relativePath, pendingCount, pendingCount);
-      console.log(
-        `${label('sync', 'blue')} ${input.docSet.source.relativePath} -> ${targetRef.relativePath} ${pendingCount}/${pendingCount} ${label('done', 'green')}`
-      );
-    } else if (pendingCount > 0) {
-      console.log(
-        `${label('sync', 'blue')} ${input.docSet.source.relativePath} -> ${targetRef.relativePath} ${completedCount}/${pendingCount} ${label('done', 'green')}`
-      );
-    }
-
     return {
       snapshot: nextSnapshot,
       usage
@@ -332,13 +301,11 @@ export class DocSetProcessor {
 
     for (const block of blocks) {
       const nextChars = currentChars + block.raw.length;
-      const contiguous =
-        current.length === 0 || block.index === current[current.length - 1]!.index + 1;
       const wouldOverflow =
         current.length >= (this.config.batch?.maxBlocksPerBatch ?? DEFAULT_MAX_BLOCKS_PER_BATCH) ||
         nextChars > (this.config.batch?.maxCharsPerBatch ?? DEFAULT_MAX_CHARS_PER_BATCH);
 
-      if (!contiguous || wouldOverflow) {
+      if (wouldOverflow) {
         if (current.length > 0) {
           batches.push(current);
         }
@@ -537,22 +504,6 @@ export class DocSetProcessor {
       reason: 'Fallback heuristic: no model-based rewrite judge was available.',
       usage: zeroUsage()
     };
-  }
-
-  private renderSyncProgress(
-    liveSync: ReturnType<typeof createLiveLine>,
-    sourceRelativePath: string,
-    targetProgress: Map<string, { completed: number; total: number }>
-  ): void {
-    const entries = [...targetProgress.entries()]
-      .filter(([, progress]) => progress.total > 0)
-      .map(([targetPath, progress]) => `${sourceRelativePath} -> ${targetPath} ${progress.completed}/${progress.total}`);
-
-    if (entries.length === 0) {
-      return;
-    }
-
-    liveSync.update(entries.join(' | '));
   }
 
   private collectManualCorrections(
