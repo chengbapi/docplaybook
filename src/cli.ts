@@ -8,10 +8,11 @@ import { formatCliError } from './errors.js';
 import { detectWorkspaceSourceLanguage } from './init/detect-language.js';
 import {
   ensureModelEnvForInit,
+  prepareInitModel,
   resolveInitModelConfig,
   testModelConnection
 } from './init/model-setup.js';
-import { confirmSourceLanguage, promptTargetLanguages } from './init/prompts.js';
+import { canPrompt, confirmSourceLanguage, promptTargetLanguages } from './init/prompts.js';
 import type { LayoutKind, ModelKind } from './types.js';
 import { pathExists } from './utils.js';
 import { WorkspaceAgent } from './service/workspace-agent.js';
@@ -56,10 +57,6 @@ program
     const existingConfig = (await pathExists(getConfigPath(workspaceRoot)))
       ? await loadConfig(workspaceRoot)
       : null;
-    const sourceLanguage =
-      options.source ||
-      existingConfig?.sourceLanguage ||
-      (await confirmSourceLanguage(await detectWorkspaceSourceLanguage(workspaceRoot)));
     const modelFlagsExplicit = [
       'modelKind',
       'model',
@@ -69,35 +66,50 @@ program
       'baseUrlEnv'
     ].some((name) => command.getOptionValueSource(name) === 'cli');
     const existingModel = existingConfig?.model;
-    const resolvedModel =
-      existingConfig && !modelFlagsExplicit
-        ? existingConfig.model
-        : await resolveInitModelConfig({
-            modelKind: modelKindExplicit ? modelKind : existingModel?.kind,
-            model: options.model ?? existingModel?.model,
-            apiKeyEnv: options.apiKeyEnv ?? existingModel?.apiKeyEnv,
-            authTokenEnv:
-              options.authTokenEnv ??
-              (existingModel?.kind === 'anthropic' ? existingModel.authTokenEnv : undefined),
-            providerName:
-              options.providerName ??
-              (existingModel?.kind === 'openai-compatible'
-                ? existingModel.providerName
-                : undefined),
-            baseUrlEnv:
-              options.baseUrlEnv ??
-              (existingModel && existingModel.kind !== 'gateway'
-                ? existingModel.baseUrlEnv
-                : undefined)
-          });
-    const envSetup = await ensureModelEnvForInit(workspaceRoot, resolvedModel);
+    const modelOptions = {
+      modelKind: modelKindExplicit ? modelKind : existingModel?.kind,
+      model: options.model ?? existingModel?.model,
+      apiKeyEnv: options.apiKeyEnv ?? existingModel?.apiKeyEnv,
+      authTokenEnv:
+        options.authTokenEnv ??
+        (existingModel?.kind === 'anthropic' ? existingModel.authTokenEnv : undefined),
+      providerName:
+        options.providerName ??
+        (existingModel?.kind === 'openai-compatible'
+          ? existingModel.providerName
+          : undefined),
+      baseUrlEnv:
+        options.baseUrlEnv ??
+        (existingModel && existingModel.kind !== 'gateway'
+          ? existingModel.baseUrlEnv
+          : undefined)
+    };
 
-    if (envSetup.ready) {
+    const interactiveModelSetup = canPrompt() && !modelFlagsExplicit;
+    const preparedModel = interactiveModelSetup
+      ? await prepareInitModel(workspaceRoot, modelOptions)
+      : {
+          model:
+            existingConfig && !modelFlagsExplicit
+              ? existingConfig.model
+              : await resolveInitModelConfig(modelOptions),
+          envSetup: undefined
+        };
+    const resolvedModel = preparedModel.model;
+    const envSetup =
+      preparedModel.envSetup ?? (await ensureModelEnvForInit(workspaceRoot, resolvedModel));
+
+    if (!interactiveModelSetup && envSetup.ready) {
       console.log('');
       console.log(`Testing model connectivity for ${resolvedModel.kind}...`);
       await testModelConnection(resolvedModel);
       console.log('Model connectivity check passed.');
     }
+
+    const sourceLanguage =
+      options.source ||
+      existingConfig?.sourceLanguage ||
+      (await confirmSourceLanguage(await detectWorkspaceSourceLanguage(workspaceRoot)));
 
     const requestedTargets = options.targets
       ? parseTargets(options.targets)

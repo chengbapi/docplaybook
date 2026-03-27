@@ -30,6 +30,10 @@ function isLikelyLocalizedVariant(relativePath: string): boolean {
   return /\.[a-z]{2}(?:-[a-zA-Z]{2,4})?\.md$/i.test(basename);
 }
 
+function isInternalDocplaybookPath(relativePath: string): boolean {
+  return relativePath.split('/').includes('.docplaybook');
+}
+
 function preferImportantFiles(left: string, right: string): number {
   const leftScore = left === 'README.md' ? 0 : left.split('/').length;
   const rightScore = right === 'README.md' ? 0 : right.split('/').length;
@@ -64,7 +68,9 @@ export async function detectWorkspaceSourceLanguage(
     return null;
   }
 
-  const candidates = files.filter((relativePath) => !isLikelyLocalizedVariant(relativePath));
+  const candidates = files.filter((relativePath) => {
+    return !isInternalDocplaybookPath(relativePath) && !isLikelyLocalizedVariant(relativePath);
+  });
   const selectedFiles = (candidates.length > 0 ? candidates : files).slice(0, 8);
   const chunks: string[] = [];
 

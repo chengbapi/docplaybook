@@ -196,17 +196,19 @@ CLI 内部使用的核心对象有：
 }
 ```
 
-在创建模型客户端之前，`docplaybook` 还会自动从 workspace 根目录加载这些 env 文件：
+在创建模型客户端之前，`docplaybook` 还会自动加载这些 env 文件：
 
-- `.env`
+- `.docplaybook/.env.local`
+- `.docplaybook/.env`
+- `.env.docplaybook.local`（兼容旧位置）
+- `.env.docplaybook`（兼容旧位置）
 - `.env.local`
-- `.env.docplaybook`
-- `.env.docplaybook.local`
+- `.env`
 
 推荐实践：
 
 - 将 `.docplaybook/config.json` 提交到仓库
-- 将密钥放在 `.env.local` 或 `.env.docplaybook.local`
+- 将密钥放在 `.docplaybook/.env.local`
 - 在自动化环境里使用 shell 环境变量或 CI secrets
 
 ## 翻译经验库
@@ -304,11 +306,10 @@ npm run dev -- init ./examples/sample-workspace
 
 它会：
 
-- 自动识别主文档语言，并让你确认
-- 引导你选择模型 provider，例如 OpenAI、Anthropic、Vercel AI Gateway 或自定义 OpenAI 兼容 provider
-- 在继续初始化前检查所需环境变量；如果缺失，会提示你补到 `.env.docplaybook.local`
-- 如果模型凭证已经齐全，会先做一次轻量连通性检查
-- 确认 model setup 没问题后，再提示输入 `en,ja` 这样的 target languages
+- 先引导你选择模型 provider 和具体 model
+- 完成所需凭证配置，并在准备好后做一次轻量连通性检查
+- 再自动识别主文档语言，并让你确认
+- 然后提示输入 `en,ja` 这样的 target languages
 - 初始化配置后，立即执行第一次翻译
 
 如果之后想继续添加语言，可以在同一个 workspace 里再次执行：

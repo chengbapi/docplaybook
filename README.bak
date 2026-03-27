@@ -196,17 +196,19 @@ Example `openai-compatible` config:
 }
 ```
 
-`docplaybook` also auto-loads env files from the workspace root before it creates the model client:
+`docplaybook` also auto-loads these env files before it creates the model client:
 
-- `.env`
+- `.docplaybook/.env.local`
+- `.docplaybook/.env`
+- `.env.docplaybook.local` (legacy compatibility)
+- `.env.docplaybook` (legacy compatibility)
 - `.env.local`
-- `.env.docplaybook`
-- `.env.docplaybook.local`
+- `.env`
 
 Recommended practice:
 
 - commit `.docplaybook/config.json`
-- keep secrets in `.env.local` or `.env.docplaybook.local`
+- keep secrets in `.docplaybook/.env.local`
 - use shell env vars or CI secrets in automation environments
 
 ## Translation Memory
@@ -304,10 +306,10 @@ npm run dev -- init ./examples/sample-workspace
 
 It will:
 
+- guide you through choosing a model provider and model ID first
+- complete the required credential setup and run a lightweight connectivity check
 - detect the source language and ask for confirmation
-- prompt for comma-separated target languages such as `en,ja` if none exist yet
-- guide you through choosing a model provider such as OpenAI, Anthropic, Vercel AI Gateway, or a custom OpenAI-compatible provider
-- check the required environment variables before the first translation and point you to `.env.docplaybook.local` if anything is missing
+- prompt for comma-separated target languages such as `en,ja`
 - initialize the workspace and immediately run the first translation pass
 
 If you want to add more languages later, run the same command again in the same workspace:

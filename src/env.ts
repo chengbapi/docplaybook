@@ -1,12 +1,16 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { config as loadDotenv } from 'dotenv';
-import { pathExists } from './utils.js';
+import { CONFIG_DIRNAME } from './config.js';
+import { ensureDir, pathExists } from './utils.js';
 
-export const WORKSPACE_ENV_LOCAL_FILENAME = '.env.docplaybook.local';
+export const WORKSPACE_ENV_LOCAL_FILENAME = '.env.local';
+export const WORKSPACE_ENV_LOCAL_RELATIVE_PATH = `${CONFIG_DIRNAME}/${WORKSPACE_ENV_LOCAL_FILENAME}`;
 
-const ENV_FILENAMES = [
-  WORKSPACE_ENV_LOCAL_FILENAME,
+const ENV_RELATIVE_PATHS = [
+  WORKSPACE_ENV_LOCAL_RELATIVE_PATH,
+  `${CONFIG_DIRNAME}/.env`,
+  '.env.docplaybook.local',
   '.env.docplaybook',
   '.env.translator-agent.local',
   '.env.translator-agent',
@@ -23,8 +27,8 @@ function formatEnvValue(value: string): string {
 }
 
 export async function loadWorkspaceEnv(workspaceRoot: string): Promise<void> {
-  for (const filename of ENV_FILENAMES) {
-    const envPath = path.join(workspaceRoot, filename);
+  for (const relativePath of ENV_RELATIVE_PATHS) {
+    const envPath = path.join(workspaceRoot, relativePath);
     if (await pathExists(envPath)) {
       loadDotenv({
         path: envPath,
@@ -36,7 +40,7 @@ export async function loadWorkspaceEnv(workspaceRoot: string): Promise<void> {
 }
 
 export function getWorkspaceLocalEnvPath(workspaceRoot: string): string {
-  return path.join(workspaceRoot, WORKSPACE_ENV_LOCAL_FILENAME);
+  return path.join(workspaceRoot, WORKSPACE_ENV_LOCAL_RELATIVE_PATH);
 }
 
 export async function writeWorkspaceEnvValues(
@@ -44,6 +48,7 @@ export async function writeWorkspaceEnvValues(
   values: Record<string, string>
 ): Promise<string> {
   const envPath = getWorkspaceLocalEnvPath(workspaceRoot);
+  await ensureDir(path.dirname(envPath));
   const raw = (await pathExists(envPath)) ? await fs.readFile(envPath, 'utf8') : '';
   const lines = raw.length > 0 ? raw.replace(/\r\n/g, '\n').trimEnd().split('\n') : [];
 

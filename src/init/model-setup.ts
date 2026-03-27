@@ -1,15 +1,22 @@
 import { generateText, type LanguageModel } from 'ai';
-import path from 'node:path';
 import { getWorkspaceLocalEnvPath, writeWorkspaceEnvValues } from '../env.js';
-import { getMissingModelEnvRequirements, resolveModelConfig } from '../model/model-config.js';
+import {
+  defaultModelForKind,
+  getMissingModelEnvRequirements,
+  getModelEnvRequirements,
+  resolveModelConfig
+} from '../model/model-config.js';
 import { createModelHandle } from '../model/model-factory.js';
 import { UserFacingError } from '../errors.js';
 import type { ModelConfig, ModelKind } from '../types.js';
 import {
   canPrompt,
+  promptModelId,
   promptModelKind,
+  promptModelKindWithDefault,
   promptOptionalValue,
   promptProviderName,
+  promptRetryModelSetupStep,
   promptSecret
 } from './prompts.js';
 
@@ -29,6 +36,11 @@ export interface EnsureModelEnvResult {
   missingLabels: string[];
 }
 
+export interface PrepareInitModelResult {
+  model: ModelConfig;
+  envSetup: EnsureModelEnvResult;
+}
+
 export type ModelConnectionTester = (input: {
   model: LanguageModel;
   prompt: string;
@@ -46,11 +58,13 @@ function toEnvPrefix(providerName: string): string {
 
 export async function resolveInitModelConfig(options: ModelSetupOptions): Promise<ModelConfig> {
   const modelKind = options.modelKind ?? (canPrompt() ? await promptModelKind() : 'openai');
+  const defaultModel = options.model || defaultModelForKind(modelKind);
+  const model = options.model ?? (canPrompt() ? await promptModelId(defaultModel) : defaultModel);
 
   if (modelKind !== 'openai-compatible') {
     return resolveModelConfig({
       modelKind,
-      model: options.model,
+      model,
       apiKeyEnv: options.apiKeyEnv,
       authTokenEnv: options.authTokenEnv,
       providerName: options.providerName,
@@ -64,7 +78,7 @@ export async function resolveInitModelConfig(options: ModelSetupOptions): Promis
   return resolveModelConfig({
     modelKind,
     providerName,
-    model: options.model,
+    model,
     apiKeyEnv: options.apiKeyEnv || `${envPrefix}_API_KEY`,
     baseUrlEnv: options.baseUrlEnv || `${envPrefix}_BASE_URL`
   });
@@ -72,12 +86,15 @@ export async function resolveInitModelConfig(options: ModelSetupOptions): Promis
 
 export async function ensureModelEnvForInit(
   workspaceRoot: string,
-  model: ModelConfig
+  model: ModelConfig,
+  options: {
+    forcePrompt?: boolean;
+  } = {}
 ): Promise<EnsureModelEnvResult> {
   let missing = getMissingModelEnvRequirements(model);
   const envPath = getWorkspaceLocalEnvPath(workspaceRoot);
 
-  if (missing.length === 0) {
+  if (missing.length === 0 && !options.forcePrompt) {
     return {
       ready: true,
       envPath,
@@ -89,24 +106,21 @@ export async function ensureModelEnvForInit(
   const nextValues: Record<string, string> = {};
 
   if (canPrompt()) {
+    const requirements = options.forcePrompt ? getModelEnvRequirements(model) : missing;
     console.log('');
     console.log(`Model setup for ${model.kind}:`);
 
-    for (const requirement of missing) {
+    for (const requirement of requirements) {
       const envNames = requirement.names.join(' or ');
-      const prompt =
-        requirement.secret
-          ? `${requirement.label} is not set (${envNames}). Paste it now to save in ${path.basename(envPath)}, or leave empty to configure later: `
-          : `${requirement.label} is not set (${envNames}). Enter it now to save in ${path.basename(envPath)}, or leave empty to configure later`;
+      const value = await promptRequiredRequirementValue({
+        secret: requirement.secret,
+        prompt: requirement.secret
+          ? `${requirement.label} is required (${envNames}). Paste it now. Press Ctrl+C to cancel: `
+          : `${requirement.label} is required (${envNames}). Enter it now. Press Ctrl+C to cancel`
+      });
 
-      const value = requirement.secret
-        ? await promptSecret(prompt)
-        : await promptOptionalValue(prompt);
-
-      if (value.trim()) {
-        nextValues[requirement.saveToEnvName] = value.trim();
-        process.env[requirement.saveToEnvName] = value.trim();
-      }
+      nextValues[requirement.saveToEnvName] = value;
+      process.env[requirement.saveToEnvName] = value;
     }
 
     if (Object.keys(nextValues).length > 0) {
@@ -122,6 +136,90 @@ export async function ensureModelEnvForInit(
     wroteValues: Object.keys(nextValues).length > 0,
     missingLabels: missing.map((requirement) => `${requirement.label} (${requirement.names.join(' or ')})`)
   };
+}
+
+async function promptRequiredRequirementValue(input: {
+  secret: boolean;
+  prompt: string;
+}): Promise<string> {
+  while (true) {
+    const value = input.secret
+      ? await promptSecret(input.prompt)
+      : await promptOptionalValue(input.prompt);
+
+    if (value.trim()) {
+      return value.trim();
+    }
+
+    console.log('This value is required to continue model setup.');
+  }
+}
+
+export async function prepareInitModel(
+  workspaceRoot: string,
+  options: ModelSetupOptions
+): Promise<PrepareInitModelResult> {
+  let currentOptions: ModelSetupOptions = { ...options };
+  let model =
+    canPrompt()
+      ? await resolveInteractiveInitModelConfig(currentOptions)
+      : await resolveInitModelConfig(currentOptions);
+  let envSetup = await ensureModelEnvForInit(workspaceRoot, model);
+
+  while (envSetup.ready) {
+    try {
+      console.log('');
+      console.log(`Testing model connectivity for ${model.kind}...`);
+      await testModelConnection(model);
+      console.log('Model connectivity check passed.');
+      return { model, envSetup };
+    } catch (error) {
+      if (!canPrompt()) {
+        throw error;
+      }
+
+      console.log('');
+      console.log(error instanceof Error ? error.message : String(error));
+
+      const retryStep = await promptRetryModelSetupStep();
+
+      if (retryStep === 1) {
+        currentOptions = {};
+        model = await resolveInteractiveInitModelConfig(currentOptions);
+        envSetup = await ensureModelEnvForInit(workspaceRoot, model, { forcePrompt: true });
+        continue;
+      }
+
+      if (retryStep === 2) {
+        currentOptions = {
+          ...currentOptions,
+          modelKind: model.kind,
+          model: undefined,
+          providerName: model.kind === 'openai-compatible' ? model.providerName : undefined,
+          apiKeyEnv: model.apiKeyEnv,
+          authTokenEnv: model.kind === 'anthropic' ? model.authTokenEnv : undefined,
+          baseUrlEnv: model.kind !== 'gateway' ? model.baseUrlEnv : undefined
+        };
+        model = await resolveInitModelConfig(currentOptions);
+        envSetup = await ensureModelEnvForInit(workspaceRoot, model);
+        continue;
+      }
+
+      envSetup = await ensureModelEnvForInit(workspaceRoot, model, { forcePrompt: true });
+    }
+  }
+
+  return { model, envSetup };
+}
+
+async function resolveInteractiveInitModelConfig(
+  options: ModelSetupOptions
+): Promise<ModelConfig> {
+  const modelKind = await promptModelKindWithDefault(options.modelKind ?? 'openai');
+  return resolveInitModelConfig({
+    ...options,
+    modelKind
+  });
 }
 
 export async function testModelConnection(

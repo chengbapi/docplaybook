@@ -32,6 +32,12 @@ test('detectWorkspaceSourceLanguage prefers workspace markdown and detects Chine
     ['# Japanese guide', '', 'このファイルは主言語の判定サンプルに含めるべきではありません。', ''].join('\n'),
     'utf8'
   );
+  await fs.mkdir(path.join(root, '.docplaybook', 'memories'), { recursive: true });
+  await fs.writeFile(
+    path.join(root, '.docplaybook', 'memories', 'zh-CN__en.md'),
+    ['# Translation Playbook', '', 'This internal memory file should be ignored by language detection.', ''].join('\n'),
+    'utf8'
+  );
 
   const detected = await detectWorkspaceSourceLanguage(root);
 
@@ -40,6 +46,7 @@ test('detectWorkspaceSourceLanguage prefers workspace markdown and detects Chine
   assert.ok(detected.sampleFiles.includes('README.md'));
   assert.equal(detected.sampleFiles.includes('docs/guide.en.md'), false);
   assert.equal(detected.sampleFiles.includes('docs/guide.ja.md'), false);
+  assert.equal(detected.sampleFiles.includes('.docplaybook/memories/zh-CN__en.md'), false);
 });
 
 test('initWorkspaceConfig merges target languages on repeated init', async (t) => {

@@ -22,9 +22,28 @@ function choiceLabel(index: number, label: string): string {
 }
 
 export async function promptModelKind(): Promise<ModelKind> {
-  if (!canPrompt()) {
-    return 'openai';
+  return promptModelKindWithDefault('openai');
+}
+
+function modelKindToChoice(kind: ModelKind): string {
+  switch (kind) {
+    case 'openai':
+      return '1';
+    case 'anthropic':
+      return '2';
+    case 'gateway':
+      return '3';
+    case 'openai-compatible':
+      return '4';
   }
+}
+
+export async function promptModelKindWithDefault(defaultKind: ModelKind): Promise<ModelKind> {
+  if (!canPrompt()) {
+    return defaultKind;
+  }
+
+  const defaultChoice = modelKindToChoice(defaultKind);
 
   const answer = await askLine(
     [
@@ -33,11 +52,11 @@ export async function promptModelKind(): Promise<ModelKind> {
       choiceLabel(2, 'Anthropic official'),
       choiceLabel(3, 'Vercel AI Gateway'),
       choiceLabel(4, 'OpenAI-compatible custom provider'),
-      'Choose a provider [1]: '
+      `Choose a provider [${defaultChoice}]: `
     ].join('\n')
   );
 
-  switch (answer.trim() || '1') {
+  switch (answer.trim() || defaultChoice) {
     case '1':
       return 'openai';
     case '2':
@@ -48,6 +67,42 @@ export async function promptModelKind(): Promise<ModelKind> {
       return 'openai-compatible';
     default:
       throw new UserFacingError('Unknown provider choice. Please choose 1, 2, 3, or 4.');
+  }
+}
+
+export async function promptModelId(defaultValue: string): Promise<string> {
+  if (!canPrompt()) {
+    return defaultValue;
+  }
+
+  const answer = await askLine(`Model ID [${defaultValue}]: `);
+  return answer.trim() || defaultValue;
+}
+
+export async function promptRetryModelSetupStep(): Promise<1 | 2 | 3> {
+  if (!canPrompt()) {
+    throw new UserFacingError('Model connectivity check failed.');
+  }
+
+  const answer = await askLine(
+    [
+      'Choose where to go back:',
+      choiceLabel(1, 'Provider'),
+      choiceLabel(2, 'Model'),
+      choiceLabel(3, 'Credentials'),
+      'Retry from step [2]: '
+    ].join('\n')
+  );
+
+  switch (answer.trim() || '2') {
+    case '1':
+      return 1;
+    case '2':
+      return 2;
+    case '3':
+      return 3;
+    default:
+      throw new UserFacingError('Unknown retry choice. Please choose 1, 2, or 3.');
   }
 }
 
@@ -139,13 +194,10 @@ export async function confirmSourceLanguage(
   }
 
   const defaultLanguage = detected?.language ?? 'zh-CN';
-  const origin = detected
-    ? `Detected source language "${defaultLanguage}" from ${detected.sampleFiles
-        .slice(0, 3)
-        .join(', ')}`
-    : `Could not confidently detect the source language`;
   const answer = await askLine(
-    `${origin}. Press Enter to accept or type another language code: `
+    detected
+      ? `Detected source language: ${defaultLanguage}. Press Enter to accept, or type another language code (for example: en, zh-CN, ja): `
+      : `Could not detect the source language. Type a language code (for example: en, zh-CN, ja) [${defaultLanguage}]: `
   );
 
   return answer.trim() || defaultLanguage;

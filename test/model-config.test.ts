@@ -105,6 +105,7 @@ test('loadWorkspaceEnv loads docplaybook-specific env files before general ones'
     await fs.rm(workspaceRoot, { recursive: true, force: true });
   });
 
+  await fs.mkdir(path.join(workspaceRoot, '.docplaybook'), { recursive: true });
   await fs.writeFile(path.join(workspaceRoot, '.env'), 'TEST_PRIORITY=from-env\n', 'utf8');
   await fs.writeFile(
     path.join(workspaceRoot, '.env.local'),
@@ -112,12 +113,12 @@ test('loadWorkspaceEnv loads docplaybook-specific env files before general ones'
     'utf8'
   );
   await fs.writeFile(
-    path.join(workspaceRoot, '.env.docplaybook'),
+    path.join(workspaceRoot, '.docplaybook', '.env'),
     'TEST_PRIORITY=from-agent-env\n',
     'utf8'
   );
   await fs.writeFile(
-    path.join(workspaceRoot, '.env.docplaybook.local'),
+    path.join(workspaceRoot, '.docplaybook', '.env.local'),
     'TEST_PRIORITY=from-agent-env-local\n',
     'utf8'
   );
