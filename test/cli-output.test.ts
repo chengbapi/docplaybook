@@ -89,7 +89,7 @@ test('init saves config and skips the first translation when credentials are mis
   assert.match(result.stdout, /Skipped the first translation because required model credentials are not configured yet\./);
   assert.match(result.stdout, /OPENAI_API_KEY/);
 
-  const configPath = path.join(workspaceRoot, 'docplaybook', 'config.json');
+  const configPath = path.join(workspaceRoot, '.docplaybook', 'config.json');
   const targetPath = path.join(workspaceRoot, 'README.en.md');
 
   assert.equal(await fs.stat(configPath).then(() => true, () => false), true);

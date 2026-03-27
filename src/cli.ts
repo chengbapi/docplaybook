@@ -6,7 +6,11 @@ import { getConfigPath, initWorkspaceConfig, loadConfig } from './config.js';
 import { loadWorkspaceEnv } from './env.js';
 import { formatCliError } from './errors.js';
 import { detectWorkspaceSourceLanguage } from './init/detect-language.js';
-import { ensureModelEnvForInit, resolveInitModelConfig } from './init/model-setup.js';
+import {
+  ensureModelEnvForInit,
+  resolveInitModelConfig,
+  testModelConnection
+} from './init/model-setup.js';
 import { confirmSourceLanguage, promptTargetLanguages } from './init/prompts.js';
 import type { LayoutKind, ModelKind } from './types.js';
 import { pathExists } from './utils.js';
@@ -56,14 +60,6 @@ program
       options.source ||
       existingConfig?.sourceLanguage ||
       (await confirmSourceLanguage(await detectWorkspaceSourceLanguage(workspaceRoot)));
-
-    const requestedTargets = options.targets
-      ? parseTargets(options.targets)
-      : await promptTargetLanguages(existingConfig?.targetLanguages ?? []);
-    const mergedTargets = [
-      ...(existingConfig?.targetLanguages ?? []),
-      ...requestedTargets
-    ];
     const modelFlagsExplicit = [
       'modelKind',
       'model',
@@ -95,6 +91,21 @@ program
                 : undefined)
           });
     const envSetup = await ensureModelEnvForInit(workspaceRoot, resolvedModel);
+
+    if (envSetup.ready) {
+      console.log('');
+      console.log(`Testing model connectivity for ${resolvedModel.kind}...`);
+      await testModelConnection(resolvedModel);
+      console.log('Model connectivity check passed.');
+    }
+
+    const requestedTargets = options.targets
+      ? parseTargets(options.targets)
+      : await promptTargetLanguages(existingConfig?.targetLanguages ?? []);
+    const mergedTargets = [
+      ...(existingConfig?.targetLanguages ?? []),
+      ...requestedTargets
+    ];
 
     await initWorkspaceConfig({
       workspaceRoot,

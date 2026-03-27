@@ -1,6 +1,9 @@
+import { generateText, type LanguageModel } from 'ai';
 import path from 'node:path';
 import { getWorkspaceLocalEnvPath, writeWorkspaceEnvValues } from '../env.js';
 import { getMissingModelEnvRequirements, resolveModelConfig } from '../model/model-config.js';
+import { createModelHandle } from '../model/model-factory.js';
+import { UserFacingError } from '../errors.js';
 import type { ModelConfig, ModelKind } from '../types.js';
 import {
   canPrompt,
@@ -25,6 +28,11 @@ export interface EnsureModelEnvResult {
   wroteValues: boolean;
   missingLabels: string[];
 }
+
+export type ModelConnectionTester = (input: {
+  model: LanguageModel;
+  prompt: string;
+}) => Promise<{ text: string }>;
 
 function toEnvPrefix(providerName: string): string {
   const normalized = providerName
@@ -114,4 +122,28 @@ export async function ensureModelEnvForInit(
     wroteValues: Object.keys(nextValues).length > 0,
     missingLabels: missing.map((requirement) => `${requirement.label} (${requirement.names.join(' or ')})`)
   };
+}
+
+export async function testModelConnection(
+  model: ModelConfig,
+  tester: ModelConnectionTester = async ({ model: languageModel, prompt }) => {
+    return generateText({
+      model: languageModel,
+      prompt
+    });
+  }
+): Promise<void> {
+  const handle = createModelHandle(model);
+
+  try {
+    await tester({
+      model: handle.model,
+      prompt: 'Reply with OK only.'
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new UserFacingError(
+      `Model connectivity check failed for ${handle.label}. ${message}`
+    );
+  }
 }

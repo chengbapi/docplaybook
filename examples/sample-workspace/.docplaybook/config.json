@@ -4,10 +4,7 @@
     "kind": "local"
   },
   "sourceLanguage": "zh-CN",
-  "targetLanguages": [
-    "en",
-    "ja"
-  ],
+  "targetLanguages": ["en", "ja"],
   "layout": {
     "kind": "sibling"
   },
@@ -17,12 +14,6 @@
     "apiKeyEnv": "AI_GATEWAY_API_KEY"
   },
   "watch": {
-    "ignore": [
-      "**/node_modules/**",
-      "**/.git/**",
-      "**/dist/**",
-      "**/docplaybook/**",
-      "**/translator-agent/**"
-    ]
+    "ignore": ["**/node_modules/**", "**/.git/**", "**/dist/**", "**/.docplaybook/**"]
   }
 }

@@ -116,7 +116,7 @@ Project config and tracked memories live inside the workspace:
 
 ```text
 <workspace>/
-  docplaybook/
+  .docplaybook/
     config.json
     memories/
       zh-CN__en.md
@@ -130,7 +130,7 @@ Recommended model config shape:
 - `anthropic`: call Anthropic directly with the official provider package
 - `openai-compatible`: use a user-specified OpenAI-compatible endpoint such as OpenRouter or a self-hosted gateway
 
-Example `docplaybook/config.json` using Vercel AI Gateway:
+Example `.docplaybook/config.json` using Vercel AI Gateway:
 
 ```json
 {
@@ -149,7 +149,7 @@ Example `docplaybook/config.json` using Vercel AI Gateway:
     "apiKeyEnv": "AI_GATEWAY_API_KEY"
   },
   "watch": {
-    "ignore": ["**/node_modules/**", "**/.git/**", "**/dist/**", "**/docplaybook/**"]
+    "ignore": ["**/node_modules/**", "**/.git/**", "**/dist/**", "**/.docplaybook/**"]
   }
 }
 ```
@@ -205,7 +205,7 @@ Example `openai-compatible` config:
 
 Recommended practice:
 
-- commit `docplaybook/config.json`
+- commit `.docplaybook/config.json`
 - keep secrets in `.env.local` or `.env.docplaybook.local`
 - use shell env vars or CI secrets in automation environments
 
@@ -213,7 +213,7 @@ Recommended practice:
 
 Each language pair has one tracked Markdown playbook, for example:
 
-- `docplaybook/memories/zh-CN__en.md`
+- `.docplaybook/memories/zh-CN__en.md`
 
 That file is injected into every translation prompt. It behaves like a project-level translation skill or system context:
 

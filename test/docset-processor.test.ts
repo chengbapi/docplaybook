@@ -59,7 +59,7 @@ async function setupWorkspace(root: string, sourceRaw: string): Promise<AppConfi
       apiKeyEnv: 'AI_GATEWAY_API_KEY'
     },
     watch: {
-      ignore: ['**/node_modules/**', '**/.git/**', '**/dist/**', '**/docplaybook/**']
+      ignore: ['**/node_modules/**', '**/.git/**', '**/dist/**', '**/.docplaybook/**']
     }
   };
 }
@@ -185,7 +185,7 @@ test('DocSetProcessor can bootstrap README translations for multiple target lang
       apiKeyEnv: 'AI_GATEWAY_API_KEY'
     },
     watch: {
-      ignore: ['**/node_modules/**', '**/.git/**', '**/dist/**', '**/docplaybook/**']
+      ignore: ['**/node_modules/**', '**/.git/**', '**/dist/**', '**/.docplaybook/**']
     }
   };
 

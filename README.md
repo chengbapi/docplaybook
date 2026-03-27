@@ -116,7 +116,7 @@ CLI 内部使用的核心对象有：
 
 ```text
 <workspace>/
-  docplaybook/
+  .docplaybook/
     config.json
     memories/
       zh-CN__en.md
@@ -130,7 +130,7 @@ CLI 内部使用的核心对象有：
 - `anthropic`：使用官方 provider 包直接调用 Anthropic
 - `openai-compatible`：使用用户指定的 OpenAI 兼容端点，例如 OpenRouter 或自托管网关
 
-使用 Vercel AI Gateway 的 `docplaybook/config.json` 示例：
+使用 Vercel AI Gateway 的 `.docplaybook/config.json` 示例：
 
 ```json
 {
@@ -149,7 +149,7 @@ CLI 内部使用的核心对象有：
     "apiKeyEnv": "AI_GATEWAY_API_KEY"
   },
   "watch": {
-    "ignore": ["**/node_modules/**", "**/.git/**", "**/dist/**", "**/docplaybook/**"]
+    "ignore": ["**/node_modules/**", "**/.git/**", "**/dist/**", "**/.docplaybook/**"]
   }
 }
 ```
@@ -205,7 +205,7 @@ CLI 内部使用的核心对象有：
 
 推荐实践：
 
-- 将 `docplaybook/config.json` 提交到仓库
+- 将 `.docplaybook/config.json` 提交到仓库
 - 将密钥放在 `.env.local` 或 `.env.docplaybook.local`
 - 在自动化环境里使用 shell 环境变量或 CI secrets
 
@@ -213,7 +213,7 @@ CLI 内部使用的核心对象有：
 
 每个语言对都有一份可跟踪的 Markdown playbook，例如：
 
-- `docplaybook/memories/zh-CN__en.md`
+- `.docplaybook/memories/zh-CN__en.md`
 
 这份文件会被注入到每一次翻译 prompt 中。它本质上就像项目级的翻译 skill 或 system context：
 
@@ -305,9 +305,10 @@ npm run dev -- init ./examples/sample-workspace
 它会：
 
 - 自动识别主文档语言，并让你确认
-- 如果还没有 target languages，就提示输入 `en,ja` 这样的逗号分隔列表
 - 引导你选择模型 provider，例如 OpenAI、Anthropic、Vercel AI Gateway 或自定义 OpenAI 兼容 provider
-- 在首次翻译前检查所需环境变量；如果缺失，会提示你补到 `.env.docplaybook.local`
+- 在继续初始化前检查所需环境变量；如果缺失，会提示你补到 `.env.docplaybook.local`
+- 如果模型凭证已经齐全，会先做一次轻量连通性检查
+- 确认 model setup 没问题后，再提示输入 `en,ja` 这样的 target languages
 - 初始化配置后，立即执行第一次翻译
 
 如果之后想继续添加语言，可以在同一个 workspace 里再次执行：

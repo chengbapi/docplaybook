@@ -66,14 +66,14 @@ export interface InitOptions {
   force?: boolean;
 }
 
-export const CONFIG_DIRNAME = 'docplaybook';
+export const CONFIG_DIRNAME = '.docplaybook';
 export const CONFIG_BASENAME = 'config.json';
 export const MEMORIES_DIRNAME = 'memories';
 export const DEFAULT_IGNORE_PATTERNS = [
   '**/node_modules/**',
   '**/.git/**',
   '**/dist/**',
-  '**/docplaybook/**',
+  '**/.docplaybook/**',
   '**/translator-agent/**'
 ];
 
