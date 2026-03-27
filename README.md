@@ -140,6 +140,9 @@ CLI 内部使用的核心对象有：
   "sourceLanguage": "zh-CN",
   "targetLanguages": ["en", "ja"],
   "ignorePatterns": ["**/node_modules/**", "**/.git/**", "**/dist/**", "**/.docplaybook/**"],
+  "concurrency": {
+    "maxConcurrentRequests": 6
+  },
   "batch": {
     "maxBlocksPerBatch": 8,
     "maxCharsPerBatch": 6000
@@ -156,6 +159,8 @@ CLI 内部使用的核心对象有：
 ```
 
 `ignorePatterns` 只用来补充 docplaybook 自己的忽略规则；`.gitignore` 里的规则会默认一起生效，即使这里是空数组。
+
+`concurrency.maxConcurrentRequests` 是一次 sync 里所有 target 和 batch 共享的全局请求并发池，默认 `6`，最高支持 `20`。如果 provider 容易触发限流，先保守一点。
 
 `batch.maxBlocksPerBatch` 可以控制一次批量翻译最多合并多少个 block；如果你觉得长文档调用次数还是太多，可以先调这个值。
 

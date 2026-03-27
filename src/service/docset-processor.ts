@@ -10,13 +10,16 @@ import { parseMarkdownSnapshot, getChangedBlockIndexes, renderSnapshot, snapshot
 import { MemoryStore } from '../memories/memory-store.js';
 import { Translator } from '../translation/translator.js';
 import { MemoryUpdater } from '../translation/memory-updater.js';
-import { formatDuration, label } from '../ui.js';
+import { createLiveLine, formatDuration, label } from '../ui.js';
 import { nowIso } from '../utils.js';
 import { RuntimeStore } from '../state/runtime-store.js';
 import { LocalFolderProvider } from '../providers/local-folder-provider.js';
+import { RequestPool } from '../concurrency/request-pool.js';
 import {
+  DEFAULT_MAX_CONCURRENT_REQUESTS,
   DEFAULT_MAX_BLOCKS_PER_BATCH,
-  DEFAULT_MAX_CHARS_PER_BATCH
+  DEFAULT_MAX_CHARS_PER_BATCH,
+  MAX_MAX_CONCURRENT_REQUESTS
 } from '../config.js';
 
 export class DocSetProcessor {
@@ -46,11 +49,12 @@ export class DocSetProcessor {
 
     const sourceRaw = await this.provider.read(docSet.source.relativePath);
     const currentSourceSnapshot = parseMarkdownSnapshot(docSet.source.relativePath, sourceRaw);
-    const totalBlocks = currentSourceSnapshot.blocks.filter((block) => block.translatable).length;
-
-    console.log(
-      `${label('sync', 'blue')} Start ${docSet.source.relativePath} (${this.config.targetLanguages.length} target(s), ${totalBlocks} translatable block(s), reason: ${reason}).`
+    const requestPool = new RequestPool(
+      MAX_MAX_CONCURRENT_REQUESTS,
+      this.config.concurrency?.maxConcurrentRequests ?? DEFAULT_MAX_CONCURRENT_REQUESTS
     );
+    const liveSync = createLiveLine('sync', 'blue');
+    const targetProgress = new Map<string, { completed: number; total: number }>();
 
     for (const targetLanguage of this.config.targetLanguages) {
       const targetRef = docSet.targets[targetLanguage];
@@ -60,56 +64,109 @@ export class DocSetProcessor {
       if (targetExists) {
         const targetRaw = await this.provider.read(targetRef.relativePath);
         const currentTargetSnapshot = parseMarkdownSnapshot(targetRef.relativePath, targetRaw);
-        const corrections = this.collectManualCorrections(
-          docState.source,
-          previousTargetState?.generated,
-          currentTargetSnapshot
-        );
-
-        if (corrections === 'skip') {
-          console.warn(
-            `${label('warning', 'yellow')} Skipping memory learning for ${targetRef.relativePath} because structural edits were too large.`
-          );
-          docState.targets[targetLanguage] = {
-            language: targetLanguage,
-            accepted: currentTargetSnapshot,
-            generated: currentTargetSnapshot
-          };
-        } else if (corrections.length > 0) {
-          const currentMemory = await this.memoryStore.read(targetLanguage);
-          const updatedMemory = await this.memoryUpdater.updateMemory({
-            sourceLanguage: this.config.sourceLanguage,
-            targetLanguage,
-            memoryText: currentMemory,
-            corrections
-          });
-          addUsage(totals, updatedMemory.usage);
-          await this.memoryStore.write(targetLanguage, updatedMemory.text);
-          docState.targets[targetLanguage] = {
-            language: targetLanguage,
-            accepted: currentTargetSnapshot,
-            generated: currentTargetSnapshot
-          };
-
+        if (previousTargetState?.generated && currentTargetSnapshot.hash !== previousTargetState.generated.hash) {
+          liveSync.clear();
           console.log(
-            `${label('memory', 'magenta')} Learned ${corrections.length} correction(s) for ${this.config.sourceLanguage} -> ${targetLanguage} from ${targetRef.relativePath}.`
+            `${label('revise', 'yellow')} Detected manual edits in ${targetRef.relativePath}.`
           );
+
+          const rewriteJudgement = await this.judgeManualRewrite({
+            targetLanguage,
+            generatedTargetSnapshot: previousTargetState.generated,
+            currentTargetSnapshot
+          });
+          addUsage(totals, rewriteJudgement.usage);
+          console.log(
+            `${label('memory', 'magenta')} Rewrite check for ${targetRef.relativePath}: ${rewriteJudgement.isMajorRewrite ? 'major rewrite' : 'reusable corrections'} (${rewriteJudgement.reason}).`
+          );
+
+          if (rewriteJudgement.isMajorRewrite) {
+            docState.targets[targetLanguage] = {
+              language: targetLanguage,
+              accepted: currentTargetSnapshot,
+              generated: currentTargetSnapshot
+            };
+            continue;
+          }
+
+          const corrections = this.collectManualCorrections(
+            docState.source,
+            previousTargetState.generated,
+            currentTargetSnapshot
+          );
+
+          if (corrections === 'skip') {
+            console.warn(
+              `${label('memory', 'magenta')} Skipping memory update for ${targetRef.relativePath} because aligned corrections could not be extracted after the rewrite check.`
+            );
+            docState.targets[targetLanguage] = {
+              language: targetLanguage,
+              accepted: currentTargetSnapshot,
+              generated: currentTargetSnapshot
+            };
+          } else if (corrections.length > 0) {
+            const currentMemory = await this.memoryStore.read(targetLanguage);
+            const updatedMemory = await this.memoryUpdater.updateMemory({
+              sourceLanguage: this.config.sourceLanguage,
+              targetLanguage,
+              memoryText: currentMemory,
+              corrections
+            });
+            addUsage(totals, updatedMemory.usage);
+            await this.memoryStore.write(targetLanguage, stripOuterMarkdownFence(updatedMemory.text));
+            docState.targets[targetLanguage] = {
+              language: targetLanguage,
+              accepted: currentTargetSnapshot,
+              generated: currentTargetSnapshot
+            };
+
+            console.log(
+              `${label('memory', 'magenta')} Learned ${corrections.length} correction(s) for ${this.config.sourceLanguage} -> ${targetLanguage} from ${targetRef.relativePath}.`
+            );
+          } else {
+            docState.targets[targetLanguage] = {
+              language: targetLanguage,
+              accepted: currentTargetSnapshot,
+              generated: currentTargetSnapshot
+            };
+          }
         }
       }
+    }
 
-      const nextTargetSnapshot = await this.syncTarget({
-        docSet,
-        docState,
-        sourceSnapshot: currentSourceSnapshot,
-        targetLanguage,
-        reason,
-        totals
-      });
+    const targetResults = await Promise.all(
+      this.config.targetLanguages.map(async (targetLanguage) => {
+        const nextTarget = await this.syncTarget({
+          docSet,
+          docState,
+          sourceSnapshot: currentSourceSnapshot,
+          targetLanguage,
+          reason,
+          requestPool,
+          onPending: (targetPath, total) => {
+            targetProgress.set(targetPath, { completed: 0, total });
+            this.renderSyncProgress(liveSync, docSet.source.relativePath, targetProgress);
+          },
+          onProgress: (targetPath, completed, total) => {
+            targetProgress.set(targetPath, { completed, total });
+            this.renderSyncProgress(liveSync, docSet.source.relativePath, targetProgress);
+          }
+        });
 
-      docState.targets[targetLanguage] = {
-        language: targetLanguage,
-        accepted: nextTargetSnapshot,
-        generated: nextTargetSnapshot
+        return {
+          targetLanguage,
+          snapshot: nextTarget.snapshot,
+          usage: nextTarget.usage
+        };
+      })
+    );
+
+    for (const targetResult of targetResults) {
+      addUsage(totals, targetResult.usage);
+      docState.targets[targetResult.targetLanguage] = {
+        language: targetResult.targetLanguage,
+        accepted: targetResult.snapshot,
+        generated: targetResult.snapshot
       };
     }
 
@@ -117,9 +174,10 @@ export class DocSetProcessor {
     docState.updatedAt = nowIso();
     state.docSets[docSet.id] = docState;
     await this.runtimeStore.save(state);
+    liveSync.clear();
 
     console.log(
-      `${label('done', 'green')} Finished ${docSet.source.relativePath} in ${formatDuration(Date.now() - startedAt)} (input: ${totals.inputTokens}, output: ${totals.outputTokens}, total: ${totals.totalTokens}).`
+      `${label('done', 'green')} ${docSet.source.relativePath} finished in ${formatDuration(Date.now() - startedAt)} (input: ${totals.inputTokens}, output: ${totals.outputTokens}, total: ${totals.totalTokens}).`
     );
   }
 
@@ -129,8 +187,13 @@ export class DocSetProcessor {
     sourceSnapshot: DocumentSnapshot;
     targetLanguage: string;
     reason: string;
-    totals: ModelUsageStats;
-  }): Promise<DocumentSnapshot> {
+    requestPool: RequestPool;
+    onPending: (targetPath: string, total: number) => void;
+    onProgress: (targetPath: string, completed: number, total: number) => void;
+  }): Promise<{
+    snapshot: DocumentSnapshot;
+    usage: ModelUsageStats;
+  }> {
     const targetRef = input.docSet.targets[input.targetLanguage];
     const currentMemory = await this.memoryStore.read(input.targetLanguage);
     const targetExists = await this.provider.exists(targetRef.relativePath);
@@ -170,10 +233,9 @@ export class DocSetProcessor {
       });
     const pendingCount = pendingBlocks.length;
     let completedCount = 0;
+    const usage = zeroUsage();
 
-    console.log(
-      `${label('target', 'cyan')} ${targetRef.relativePath} (${pendingCount}/${translatableBlocks} block(s) to translate).`
-    );
+    input.onPending(targetRef.relativePath, pendingCount);
 
     for (const block of input.sourceSnapshot.blocks) {
       const existingTranslation = previousTargetSnapshot?.blocks[block.index]?.raw;
@@ -195,28 +257,38 @@ export class DocSetProcessor {
       }
     }
 
-    for (const batch of this.groupTranslationBatches(pendingBlocks)) {
-      const batchResult = await this.translateBatchWithFallback({
-        docKey: input.docSet.docKey,
-        sourceLanguage: this.config.sourceLanguage,
-        targetLanguage: input.targetLanguage,
-        memoryText: currentMemory,
-        blocks: batch
-      });
+    const batchResults = await Promise.all(
+      this.groupTranslationBatches(pendingBlocks).map((batch) =>
+        input.requestPool.run(async () => {
+          const batchResult = await this.withRateLimitRetry(
+            () =>
+              this.translateBatchWithFallback({
+                docKey: input.docSet.docKey,
+                sourceLanguage: this.config.sourceLanguage,
+                targetLanguage: input.targetLanguage,
+                memoryText: currentMemory,
+                blocks: batch
+              }),
+            input.requestPool
+          );
 
-      addUsage(input.totals, batchResult.usage);
+          addUsage(usage, batchResult.usage);
+          completedCount += batchResult.items.length;
+          input.onProgress(targetRef.relativePath, completedCount, pendingCount);
 
+          return {
+            batch,
+            batchResult
+          };
+        })
+      )
+    );
+
+    for (const { batch, batchResult } of batchResults) {
       for (const item of batchResult.items) {
         nextBlockRaws[item.index] = stripOuterMarkdownFence(item.text);
         translatedIndexes.push(item.index);
-        completedCount += 1;
       }
-
-      const batchStart = batchResult.items[0]?.index ?? 0;
-      const batchEnd = batchResult.items[batchResult.items.length - 1]?.index ?? batchStart;
-      console.log(
-        `${label('progress', 'cyan')} ${targetRef.relativePath} blocks ${completedCount - batchResult.items.length + 1}-${completedCount}/${pendingCount} (${batchStart + 1}-${batchEnd + 1}/${input.sourceSnapshot.blocks.length}, tokens: ${batchResult.usage.totalTokens}).`
-      );
     }
 
     const nextRaw = renderSnapshot(input.sourceSnapshot, nextBlockRaws);
@@ -233,12 +305,20 @@ export class DocSetProcessor {
     const nextSnapshot = parseMarkdownSnapshot(targetRef.relativePath, nextRaw);
 
     if (translatedIndexes.length > 0) {
+      input.onProgress(targetRef.relativePath, pendingCount, pendingCount);
       console.log(
-        `${label('sync', 'blue')} ${input.docSet.source.relativePath} -> ${targetRef.relativePath} (${translatedIndexes.length} block(s), reason: ${input.reason}).`
+        `${label('sync', 'blue')} ${input.docSet.source.relativePath} -> ${targetRef.relativePath} ${pendingCount}/${pendingCount} ${label('done', 'green')}`
+      );
+    } else if (pendingCount > 0) {
+      console.log(
+        `${label('sync', 'blue')} ${input.docSet.source.relativePath} -> ${targetRef.relativePath} ${completedCount}/${pendingCount} ${label('done', 'green')}`
       );
     }
 
-    return nextSnapshot;
+    return {
+      snapshot: nextSnapshot,
+      usage
+    };
   }
 
   private groupTranslationBatches(blocks: Array<{
@@ -407,6 +487,74 @@ export class DocSetProcessor {
     };
   }
 
+  private async withRateLimitRetry<T>(
+    task: () => Promise<T>,
+    requestPool: RequestPool,
+    attempt = 1
+  ): Promise<T> {
+    try {
+      return await task();
+    } catch (error) {
+      if (!isRetryableRateLimitError(error) || attempt >= 3) {
+        throw error;
+      }
+
+      requestPool.noteRateLimit();
+      const delayMs = 500 * 2 ** (attempt - 1);
+      console.warn(
+        `${label('warning', 'yellow')} Rate limited. Retrying in ${delayMs}ms (attempt ${attempt + 1}/3).`
+      );
+      await sleep(delayMs);
+      return this.withRateLimitRetry(task, requestPool, attempt + 1);
+    }
+  }
+
+  private async judgeManualRewrite(input: {
+    targetLanguage: string;
+    generatedTargetSnapshot: DocumentSnapshot;
+    currentTargetSnapshot: DocumentSnapshot;
+  }): Promise<{ isMajorRewrite: boolean; reason: string; usage: ModelUsageStats }> {
+    const judge = this.memoryUpdater as MemoryUpdater & {
+      judgeManualRewrite?: (input: {
+        sourceLanguage: string;
+        targetLanguage: string;
+        generatedTargetSnapshot: DocumentSnapshot;
+        currentTargetSnapshot: DocumentSnapshot;
+      }) => Promise<{ isMajorRewrite: boolean; reason: string; usage: ModelUsageStats }>;
+    };
+
+    if (typeof judge.judgeManualRewrite === 'function') {
+      return judge.judgeManualRewrite({
+        sourceLanguage: this.config.sourceLanguage,
+        targetLanguage: input.targetLanguage,
+        generatedTargetSnapshot: input.generatedTargetSnapshot,
+        currentTargetSnapshot: input.currentTargetSnapshot
+      });
+    }
+
+    return {
+      isMajorRewrite: isLikelyLargeRewrite(input.generatedTargetSnapshot, input.currentTargetSnapshot),
+      reason: 'Fallback heuristic: no model-based rewrite judge was available.',
+      usage: zeroUsage()
+    };
+  }
+
+  private renderSyncProgress(
+    liveSync: ReturnType<typeof createLiveLine>,
+    sourceRelativePath: string,
+    targetProgress: Map<string, { completed: number; total: number }>
+  ): void {
+    const entries = [...targetProgress.entries()]
+      .filter(([, progress]) => progress.total > 0)
+      .map(([targetPath, progress]) => `${sourceRelativePath} -> ${targetPath} ${progress.completed}/${progress.total}`);
+
+    if (entries.length === 0) {
+      return;
+    }
+
+    liveSync.update(entries.join(' | '));
+  }
+
   private collectManualCorrections(
     previousSourceSnapshot: DocumentSnapshot | undefined,
     generatedTargetSnapshot: DocumentSnapshot | undefined,
@@ -485,4 +633,52 @@ function stripOuterMarkdownFence(text: string): string {
   }
 
   return match[1] ?? normalized;
+}
+
+function isLikelyLargeRewrite(
+  generatedTargetSnapshot: DocumentSnapshot,
+  currentTargetSnapshot: DocumentSnapshot
+): boolean {
+  if (!snapshotsHaveSameShape(generatedTargetSnapshot, currentTargetSnapshot)) {
+    return true;
+  }
+
+  const generatedBlocks = generatedTargetSnapshot.blocks.filter((block) => block.translatable);
+  const changedBlocks = generatedBlocks.filter((block) => {
+    const currentBlock = currentTargetSnapshot.blocks[block.index];
+    return currentBlock && currentBlock.raw !== block.raw;
+  }).length;
+
+  return generatedBlocks.length >= 5 && changedBlocks >= 3 && changedBlocks / generatedBlocks.length > 0.6;
+}
+
+function isRetryableRateLimitError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const record = error as Error & {
+    statusCode?: number;
+    status?: number;
+    cause?: unknown;
+  };
+  const statusCode =
+    record.statusCode ??
+    record.status ??
+    (typeof record.cause === 'object' && record.cause !== null && 'status' in record.cause
+      ? Number((record.cause as { status?: number }).status)
+      : undefined);
+
+  if (statusCode === 429) {
+    return true;
+  }
+
+  const message = `${error.message} ${String(record.cause ?? '')}`.toLowerCase();
+  return message.includes('429') || message.includes('rate limit') || message.includes('too many requests');
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
 }

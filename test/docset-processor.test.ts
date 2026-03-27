@@ -352,6 +352,76 @@ test('DocSetProcessor learns from human corrections and uses updated memory on f
   assert.match(nextTargetRaw, /EN:第二段保持不变。/);
 });
 
+test('DocSetProcessor strips outer markdown fences before writing updated memory', async (t) => {
+  const root = await createTempWorkspace('memory-fence-strip');
+  t.after(async () => {
+    await fs.rm(root, { recursive: true, force: true });
+  });
+
+  const runtimeHome = path.join(root, '.runtime');
+  const previousRuntimeHome = process.env.DOCPLAYBOOK_HOME;
+  process.env.DOCPLAYBOOK_HOME = runtimeHome;
+  t.after(() => {
+    if (previousRuntimeHome === undefined) {
+      delete process.env.DOCPLAYBOOK_HOME;
+    } else {
+      process.env.DOCPLAYBOOK_HOME = previousRuntimeHome;
+    }
+  });
+
+  const config = await setupWorkspace(
+    root,
+    ['# 欢迎', '', '飞书知识库支持权限控制。', ''].join('\n')
+  );
+  const provider = new LocalFolderProvider(root, config.ignorePatterns ?? []);
+  const runtimeStore = new RuntimeStore(root);
+
+  const translator = {
+    async translateBlock(context: TranslationContext): Promise<{ text: string; usage: { inputTokens: number; outputTokens: number; totalTokens: number } }> {
+      return {
+        text: translateMarkdownLikeModel(context.sourceBlock, 'EN:'),
+        usage: fakeUsage()
+      };
+    }
+  } as unknown as Translator;
+
+  const memoryUpdater = {
+    async updateMemory(): Promise<{ text: string; usage: { inputTokens: number; outputTokens: number; totalTokens: number } }> {
+      return {
+        text: ['```md', '# Translation Playbook: zh-CN -> en', '', '- Translate "知识库" as "Wiki".', '```', ''].join('\n'),
+        usage: fakeUsage(20)
+      };
+    }
+  } as unknown as MemoryUpdater;
+
+  const processor = new DocSetProcessor(
+    root,
+    config,
+    provider,
+    runtimeStore,
+    translator,
+    memoryUpdater,
+    new Set<string>()
+  );
+
+  const docSet = await loadGuideDocSet(root, config);
+  await processor.processDocSet(docSet, 'initial');
+
+  await fs.writeFile(
+    path.join(root, 'docs/guide.en.md'),
+    ['# EN:欢迎', '', 'Feishu Wiki supports permission control.', ''].join('\n'),
+    'utf8'
+  );
+
+  await processor.processDocSet(docSet, 'manual-edit');
+
+  const memoryStore = new MemoryStore(root, 'zh-CN');
+  const updatedMemory = await memoryStore.read('en');
+  assert.doesNotMatch(updatedMemory, /```md/);
+  assert.doesNotMatch(updatedMemory, /^```$/m);
+  assert.match(updatedMemory, /Translate "知识库" as "Wiki"/);
+});
+
 test('DocSetProcessor skips memory generation for large manual rewrites', async (t) => {
   const root = await createTempWorkspace('skip-large-rewrites');
   t.after(async () => {
@@ -452,7 +522,7 @@ test('DocSetProcessor skips memory generation for large manual rewrites', async 
   const afterMemory = await memoryStore.read('en');
   assert.equal(memoryUpdateCalls.length, 0);
   assert.equal(afterMemory, beforeMemory);
-  assert.equal(warningCount, 1);
+  assert.equal(warningCount, 0);
 
   const targetAfterSkip = await fs.readFile(path.join(root, 'docs/guide.en.md'), 'utf8');
   assert.equal(targetAfterSkip, rewrittenTarget);

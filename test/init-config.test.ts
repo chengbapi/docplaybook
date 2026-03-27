@@ -89,6 +89,7 @@ test('initWorkspaceConfig merges target languages on repeated init', async (t) =
   const raw = await fs.readFile(configPath, 'utf8');
   assert.match(raw, /"targetLanguages": \["en","ja"]/);
   assert.match(raw, /"ignorePatterns": \["\*\*\/node_modules\/\*\*","\*\*\/\.git\/\*\*","\*\*\/dist\/\*\*","\*\*\/\.docplaybook\/\*\*"]/);
+  assert.match(raw, /"maxConcurrentRequests": 6/);
   assert.match(raw, /"maxBlocksPerBatch": 8/);
 });
 
@@ -132,6 +133,56 @@ test('loadConfig supports comments in .docplaybook/config.json', async (t) => {
   assert.equal(config.sourceLanguage, 'zh-CN');
   assert.deepEqual(config.targetLanguages, ['en', 'ja']);
   assert.equal(config.model.kind, 'openai');
+});
+
+test('loadConfig resolves model config from env when config.json leaves it unlocked', async (t) => {
+  const root = await createTempWorkspace('config-model-env');
+  t.after(async () => {
+    await fs.rm(root, { recursive: true, force: true });
+  });
+
+  const previousEnv = {
+    DOCPLAYBOOK_MODEL_KIND: process.env.DOCPLAYBOOK_MODEL_KIND,
+    DOCPLAYBOOK_MODEL: process.env.DOCPLAYBOOK_MODEL,
+    DOCPLAYBOOK_MODEL_API_KEY_ENV: process.env.DOCPLAYBOOK_MODEL_API_KEY_ENV
+  };
+  t.after(() => {
+    for (const [key, value] of Object.entries(previousEnv)) {
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
+  });
+
+  process.env.DOCPLAYBOOK_MODEL_KIND = 'openai';
+  process.env.DOCPLAYBOOK_MODEL = 'gpt-5-mini';
+  process.env.DOCPLAYBOOK_MODEL_API_KEY_ENV = 'OPENAI_API_KEY';
+
+  await fs.mkdir(path.join(root, '.docplaybook'), { recursive: true });
+  await fs.writeFile(
+    path.join(root, '.docplaybook', 'config.json'),
+    [
+      '{',
+      '  "version": 1,',
+      '  "sourceLanguage": "zh-CN",',
+      '  "targetLanguages": ["en"],',
+      '  "ignorePatterns": ["**/.docplaybook/**"],',
+      '  "layout": {',
+      '    "kind": "sibling"',
+      '  }',
+      '  // Model config is resolved from local env for this workspace.',
+      '}',
+      ''
+    ].join('\n'),
+    'utf8'
+  );
+
+  const config = await loadConfig(root);
+
+  assert.equal(config.model.kind, 'openai');
+  assert.equal(config.model.model, 'gpt-5-mini');
 });
 
 test('loadConfig rejects legacy watch.ignore config', async (t) => {

@@ -5,6 +5,11 @@
   // Additional ignore globs for docplaybook scanning and watch.
   // .gitignore rules are also applied by default, even if this array is empty.
   "ignorePatterns": ["**/node_modules/**","**/.git/**","**/dist/**","**/.docplaybook/**", "examples/**"],
+  // Shared request pool across all translation batches in a sync run.
+  // Increase carefully if your provider rate limits aggressively.
+  "concurrency": {
+    "maxConcurrentRequests": 6
+  },
   // Batching reduces repeated prompt overhead on long documents.
   "batch": {
     "maxBlocksPerBatch": 8,

@@ -1,4 +1,4 @@
-import type { ManualCorrection, TranslationContext } from '../types.js';
+import type { DocumentSnapshot, ManualCorrection, TranslationContext } from '../types.js';
 
 export function buildTranslationSystemPrompt(context: TranslationContext): string {
   return [
@@ -103,6 +103,7 @@ export function buildMemoryUpdatePrompt(input: {
     'Update the playbook using the corrections below.',
     'Keep the file concise, deduplicated, and written for future LLM prompts.',
     'Only keep reusable translation guidance. Ignore one-off content edits.',
+    'Do not add ```md, ```markdown, or any other fenced code wrapper.',
     'Return the full updated Markdown file and nothing else.',
     '',
     'Current playbook:',
@@ -112,5 +113,40 @@ export function buildMemoryUpdatePrompt(input: {
     '',
     'New human corrections:',
     serializedCorrections
+  ].join('\n');
+}
+
+export function buildRewriteJudgePrompt(input: {
+  sourceLanguage: string;
+  targetLanguage: string;
+  generatedTargetSnapshot: DocumentSnapshot;
+  currentTargetSnapshot: DocumentSnapshot;
+}): string {
+  const generatedBlocks = input.generatedTargetSnapshot.blocks
+    .filter((block) => block.translatable)
+    .map((block, index) => [`## Block ${index + 1}`, '', block.raw.trim()].join('\n'))
+    .join('\n\n');
+  const currentBlocks = input.currentTargetSnapshot.blocks
+    .filter((block) => block.translatable)
+    .map((block, index) => [`## Block ${index + 1}`, '', block.raw.trim()].join('\n'))
+    .join('\n\n');
+
+  return [
+    `You evaluate whether edits to a translated ${input.sourceLanguage} -> ${input.targetLanguage} document are a major rewrite.`,
+    'A major rewrite means the human substantially rewrote the translated document, so the edits should not be learned as reusable translation memory.',
+    'A non-major rewrite means the human mostly made localized corrections, terminology fixes, or style adjustments that are safe to learn.',
+    'Be conservative: if the edits look like targeted correction rather than a full rewrite, return false.',
+    'Return strict JSON only with this shape:',
+    '{"isMajorRewrite": boolean, "reason": string}',
+    '',
+    'Previously generated translation:',
+    '```md',
+    generatedBlocks,
+    '```',
+    '',
+    'Current human-edited translation:',
+    '```md',
+    currentBlocks,
+    '```'
   ].join('\n');
 }

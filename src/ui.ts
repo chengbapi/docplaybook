@@ -1,4 +1,5 @@
 import { stdout } from 'node:process';
+import readline from 'node:readline';
 
 const ANSI = {
   reset: '\u001b[0m',
@@ -83,4 +84,34 @@ export function label(name: string, color: 'blue' | 'cyan' | 'green' | 'yellow' 
     case 'magenta':
       return magenta(bold(rendered));
   }
+}
+
+export function createLiveLine(prefix: string, color: 'blue' | 'cyan' | 'green' | 'yellow' | 'red' | 'magenta'): {
+  update: (message: string) => void;
+  clear: () => void;
+} {
+  let active = false;
+
+  return {
+    update(message: string): void {
+      if (!stdout.isTTY) {
+        console.log(`${label(prefix, color)} ${message}`);
+        return;
+      }
+
+      readline.clearLine(stdout, 0);
+      readline.cursorTo(stdout, 0);
+      stdout.write(`${label(prefix, color)} ${message}`);
+      active = true;
+    },
+    clear(): void {
+      if (!stdout.isTTY || !active) {
+        return;
+      }
+
+      readline.clearLine(stdout, 0);
+      readline.cursorTo(stdout, 0);
+      active = false;
+    }
+  };
 }

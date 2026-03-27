@@ -40,6 +40,9 @@ const configSchema = z.object({
   sourceLanguage: z.string().min(1),
   targetLanguages: z.array(z.string().min(1)).min(1),
   ignorePatterns: z.array(z.string().min(1)).optional(),
+  concurrency: z.object({
+    maxConcurrentRequests: z.number().int().min(1).max(20).optional()
+  }).strict().optional(),
   batch: z.object({
     maxBlocksPerBatch: z.number().int().positive().optional(),
     maxCharsPerBatch: z.number().int().positive().optional()
@@ -73,6 +76,8 @@ export const DEFAULT_IGNORE_PATTERNS = [
   '**/dist/**',
   '**/.docplaybook/**'
 ];
+export const DEFAULT_MAX_CONCURRENT_REQUESTS = 6;
+export const MAX_MAX_CONCURRENT_REQUESTS = 20;
 export const DEFAULT_MAX_BLOCKS_PER_BATCH = 8;
 export const DEFAULT_MAX_CHARS_PER_BATCH = 6_000;
 
@@ -236,6 +241,9 @@ export async function initWorkspaceConfig(options: InitOptions): Promise<void> {
       ...options.targetLanguages
     ]),
     ignorePatterns: existingConfig?.ignorePatterns ?? DEFAULT_IGNORE_PATTERNS,
+    concurrency: existingConfig?.concurrency ?? {
+      maxConcurrentRequests: DEFAULT_MAX_CONCURRENT_REQUESTS
+    },
     batch: existingConfig?.batch ?? {
       maxBlocksPerBatch: DEFAULT_MAX_BLOCKS_PER_BATCH,
       maxCharsPerBatch: DEFAULT_MAX_CHARS_PER_BATCH
@@ -275,10 +283,19 @@ export async function initWorkspaceConfig(options: InitOptions): Promise<void> {
 
 function renderConfigJsonc(config: StoredAppConfig): string {
   const ignorePatterns = config.ignorePatterns ?? DEFAULT_IGNORE_PATTERNS;
+  const maxConcurrentRequests =
+    config.concurrency?.maxConcurrentRequests ?? DEFAULT_MAX_CONCURRENT_REQUESTS;
   const maxBlocksPerBatch =
     config.batch?.maxBlocksPerBatch ?? DEFAULT_MAX_BLOCKS_PER_BATCH;
   const maxCharsPerBatch =
     config.batch?.maxCharsPerBatch ?? DEFAULT_MAX_CHARS_PER_BATCH;
+
+  const modelLines = config.model
+    ? [`  "model": ${JSON.stringify(config.model, null, 2).split('\n').join('\n  ')}`]
+    : [
+        '  // Model config is resolved from local env for this workspace.',
+        '  // Edit .docplaybook/config.json if you want to lock the provider/model for everyone.'
+      ];
 
   return [
     '{',
@@ -288,6 +305,11 @@ function renderConfigJsonc(config: StoredAppConfig): string {
     '  // Additional ignore globs for docplaybook scanning and watch.',
     '  // .gitignore rules are also applied by default, even if this array is empty.',
     `  "ignorePatterns": ${JSON.stringify(ignorePatterns)},`,
+    '  // Shared request pool across all translation batches in a sync run.',
+    '  // Increase carefully if your provider rate limits aggressively.',
+    '  "concurrency": {',
+    `    "maxConcurrentRequests": ${maxConcurrentRequests}`,
+    '  },',
     '  // Batching reduces repeated prompt overhead on long documents.',
     '  "batch": {',
     `    "maxBlocksPerBatch": ${maxBlocksPerBatch},`,
@@ -295,13 +317,8 @@ function renderConfigJsonc(config: StoredAppConfig): string {
     '  },',
     '  "layout": {',
     `    "kind": ${JSON.stringify(config.layout.kind)}`,
-    '  },',
-    ...(config.model
-      ? [`  "model": ${JSON.stringify(config.model, null, 2).split('\n').join('\n  ')}`]
-      : [
-          '  // Model config is resolved from local env for this workspace.',
-          '  // Edit .docplaybook/config.json if you want to lock the provider/model for everyone.'
-        ]),
+    `  }${config.model ? ',' : ''}`,
+    ...modelLines,
     '}',
     ''
   ].join('\n');

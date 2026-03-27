@@ -42,6 +42,7 @@ export interface StoredAppConfig {
   sourceLanguage: string;
   targetLanguages: string[];
   ignorePatterns?: string[];
+  concurrency?: ConcurrencyConfig;
   batch?: {
     maxBlocksPerBatch?: number;
     maxCharsPerBatch?: number;
@@ -54,6 +55,10 @@ export interface StoredAppConfig {
 
 export interface AppConfig extends StoredAppConfig {
   model: ModelConfig;
+}
+
+export interface ConcurrencyConfig {
+  maxConcurrentRequests?: number;
 }
 
 export interface DocumentRef {
@@ -142,6 +147,12 @@ export interface BatchTranslationResult {
 
 export interface MemoryUpdateResult {
   text: string;
+  usage: ModelUsageStats;
+}
+
+export interface RewriteJudgementResult {
+  isMajorRewrite: boolean;
+  reason: string;
   usage: ModelUsageStats;
 }
 
