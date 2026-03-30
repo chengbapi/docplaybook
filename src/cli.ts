@@ -16,7 +16,7 @@ import {
 import { getWorkspaceLocalEnvPath, writeWorkspaceEnvValues } from './env.js';
 import { canPrompt, confirmSourceLanguage, promptTargetLanguages } from './init/prompts.js';
 import type { LayoutKind, ModelKind } from './types.js';
-import { bold, cyan, green, label, setColorEnabled, yellow } from './ui.js';
+import { bold, cyan, green, label, setColorEnabled, setDebugEnabled, setVerboseEnabled, yellow } from './ui.js';
 import { pathExists } from './utils.js';
 import { WorkspaceAgent } from './service/workspace-agent.js';
 
@@ -35,9 +35,13 @@ program
   .version('0.1.0');
 
 program.option('--no-color', 'Disable color output');
+program.option('--verbose', 'Show detailed processing logs');
+program.option('--debug', 'Show debug-level logs, including payload details');
 program.hook('preAction', (_thisCommand, actionCommand) => {
   const opts = actionCommand.optsWithGlobals();
   setColorEnabled(Boolean(opts.color ?? true));
+  setDebugEnabled(Boolean(opts.debug ?? false));
+  setVerboseEnabled(Boolean(opts.verbose ?? false) || Boolean(opts.debug ?? false));
 });
 
 program

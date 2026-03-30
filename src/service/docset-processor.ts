@@ -10,15 +10,13 @@ import { parseMarkdownSnapshot, getChangedBlockIndexes, renderSnapshot, snapshot
 import { MemoryStore } from '../memories/memory-store.js';
 import { Translator } from '../translation/translator.js';
 import { MemoryUpdater } from '../translation/memory-updater.js';
-import { formatDuration, label } from '../ui.js';
+import { debugLog, formatDuration, label, verboseLog } from '../ui.js';
 import { nowIso } from '../utils.js';
 import { RuntimeStore } from '../state/runtime-store.js';
 import { LocalFolderProvider } from '../providers/local-folder-provider.js';
 import { RequestPool } from '../concurrency/request-pool.js';
 import {
   DEFAULT_MAX_CONCURRENT_REQUESTS,
-  DEFAULT_MAX_BLOCKS_PER_BATCH,
-  DEFAULT_MAX_CHARS_PER_BATCH,
   MAX_MAX_CONCURRENT_REQUESTS
 } from '../config.js';
 
@@ -52,15 +50,33 @@ export class DocSetProcessor {
     console.log(
       `${label('sync', 'blue')} ${docSet.source.relativePath} (${this.config.targetLanguages.join(', ')}, reason: ${reason})`
     );
+    verboseLog(
+      'sync',
+      'cyan',
+      `Loaded source snapshot for ${docSet.source.relativePath} with ${currentSourceSnapshot.blocks.length} total block(s).`
+    );
+    debugLog(
+      `${docSet.source.relativePath}: source snapshot block kinds = ${currentSourceSnapshot.blocks.map((block) => `${block.index + 1}:${block.kind}:${block.translatable ? 'T' : 'N'}`).join(', ')}.`
+    );
     const requestPool = new RequestPool(
       MAX_MAX_CONCURRENT_REQUESTS,
       this.config.concurrency?.maxConcurrentRequests ?? DEFAULT_MAX_CONCURRENT_REQUESTS
+    );
+    verboseLog(
+      'sync',
+      'cyan',
+      `Using shared request pool limit ${requestPool.getLimit()} for ${docSet.source.relativePath}.`
     );
 
     for (const targetLanguage of this.config.targetLanguages) {
       const targetRef = docSet.targets[targetLanguage];
       const previousTargetState = docState.targets[targetLanguage];
       const targetExists = await this.provider.exists(targetRef.relativePath);
+      verboseLog(
+        'target',
+        'cyan',
+        `${targetRef.relativePath}: exists=${targetExists}, hasGeneratedBaseline=${Boolean(previousTargetState?.generated)}.`
+      );
 
       if (targetExists) {
         const targetRaw = await this.provider.read(targetRef.relativePath);
@@ -76,6 +92,11 @@ export class DocSetProcessor {
             currentTargetSnapshot
           });
           addUsage(totals, rewriteJudgement.usage);
+          verboseLog(
+            'memory',
+            'cyan',
+            `${targetRef.relativePath}: rewrite judge tokens ${rewriteJudgement.usage.totalTokens}.`
+          );
           console.log(
             `${label('memory', 'magenta')} Rewrite check for ${targetRef.relativePath}: ${rewriteJudgement.isMajorRewrite ? 'major rewrite' : 'reusable corrections'} (${rewriteJudgement.reason}).`
           );
@@ -93,6 +114,11 @@ export class DocSetProcessor {
             docState.source,
             previousTargetState.generated,
             currentTargetSnapshot
+          );
+          verboseLog(
+            'memory',
+            'cyan',
+            `${targetRef.relativePath}: extracted ${corrections === 'skip' ? 'skip' : corrections.length} aligned correction(s).`
           );
 
           if (corrections === 'skip') {
@@ -114,6 +140,11 @@ export class DocSetProcessor {
             });
             addUsage(totals, updatedMemory.usage);
             await this.memoryStore.write(targetLanguage, stripOuterMarkdownFence(updatedMemory.text));
+            verboseLog(
+              'memory',
+              'cyan',
+              `${targetRef.relativePath}: memory updated with ${corrections.length} correction(s), tokens ${updatedMemory.usage.totalTokens}.`
+            );
             docState.targets[targetLanguage] = {
               language: targetLanguage,
               accepted: currentTargetSnapshot,
@@ -136,14 +167,16 @@ export class DocSetProcessor {
 
     const targetResults = await Promise.all(
       this.config.targetLanguages.map(async (targetLanguage) => {
-        const nextTarget = await this.syncTarget({
-          docSet,
-          docState,
-          sourceSnapshot: currentSourceSnapshot,
-          targetLanguage,
-          reason,
-          requestPool
-        });
+        const nextTarget = await requestPool.run(() =>
+          this.syncTarget({
+            docSet,
+            docState,
+            sourceSnapshot: currentSourceSnapshot,
+            targetLanguage,
+            reason,
+            requestPool
+          })
+        );
 
         return {
           targetLanguage,
@@ -222,6 +255,17 @@ export class DocSetProcessor {
         return shouldTranslate || !existingTranslation;
       });
     const usage = zeroUsage();
+    verboseLog(
+      'target',
+      'cyan',
+      `${targetRef.relativePath}: ${pendingBlocks.length}/${translatableBlocks} translatable block(s) need translation.`
+    );
+    debugLog(
+      `${targetRef.relativePath}: changed source indexes = ${changedBlockIndexes.length > 0 ? changedBlockIndexes.map((index) => index + 1).join(', ') : '(none)'}, sourceChanged=${sourceChanged}, targetShapeMatchesSource=${targetShapeMatchesSource}.`
+    );
+    debugLog(
+      `${targetRef.relativePath}: pending source indexes = ${pendingBlocks.length > 0 ? pendingBlocks.map((block) => block.index + 1).join(', ') : '(none)'}.`
+    );
 
     for (const block of input.sourceSnapshot.blocks) {
       const existingTranslation = previousTargetSnapshot?.blocks[block.index]?.raw;
@@ -243,33 +287,36 @@ export class DocSetProcessor {
       }
     }
 
-    const batchResults = await Promise.all(
-      this.groupTranslationBatches(pendingBlocks).map((batch) =>
-        input.requestPool.run(async () => {
-          const batchResult = await this.withRateLimitRetry(
-            () =>
-              this.translateBatchWithFallback({
-                docKey: input.docSet.docKey,
-                sourceLanguage: this.config.sourceLanguage,
-                targetLanguage: input.targetLanguage,
-                memoryText: currentMemory,
-                blocks: batch
-              }),
-            input.requestPool
-          );
+    if (pendingBlocks.length > 0) {
+      verboseLog(
+        'target',
+        'cyan',
+        `${targetRef.relativePath}: translating the whole article in a single request.`
+      );
+      debugLog(
+        `${targetRef.relativePath}: single article translation request covers source indexes ${pendingBlocks.map((block) => block.index + 1).join(', ')}.`
+      );
 
-          addUsage(usage, batchResult.usage);
+      const articleResult = await this.withRateLimitRetry(
+        () =>
+          this.translateArticleOnce({
+            docKey: input.docSet.docKey,
+            sourceLanguage: this.config.sourceLanguage,
+            targetLanguage: input.targetLanguage,
+            memoryText: currentMemory,
+            blocks: pendingBlocks
+          }),
+        input.requestPool
+      );
 
-          return {
-            batch,
-            batchResult
-          };
-        })
-      )
-    );
+      addUsage(usage, articleResult.usage);
+      verboseLog(
+        'target',
+        'cyan',
+        `${targetRef.relativePath}: article translation finished, tokens ${articleResult.usage.totalTokens}.`
+      );
 
-    for (const { batch, batchResult } of batchResults) {
-      for (const item of batchResult.items) {
+      for (const item of articleResult.items) {
         nextBlockRaws[item.index] = stripOuterMarkdownFence(item.text);
         translatedIndexes.push(item.index);
       }
@@ -281,9 +328,20 @@ export class DocSetProcessor {
     if (!targetExists || previousRaw !== nextRaw) {
       this.managedWrites.add(targetRef.relativePath);
       await this.provider.write(targetRef.relativePath, nextRaw);
+      verboseLog(
+        'write',
+        'cyan',
+        `${targetRef.relativePath}: wrote updated translation file (${translatedIndexes.length} translated block(s), ${usage.totalTokens} tokens).`
+      );
       setTimeout(() => {
         this.managedWrites.delete(targetRef.relativePath);
       }, 1_500);
+    } else {
+      verboseLog(
+        'write',
+        'cyan',
+        `${targetRef.relativePath}: no file changes were needed after sync.`
+      );
     }
 
     const nextSnapshot = parseMarkdownSnapshot(targetRef.relativePath, nextRaw);
@@ -294,41 +352,7 @@ export class DocSetProcessor {
     };
   }
 
-  private groupTranslationBatches(blocks: Array<{
-    index: number;
-    raw: string;
-    translatable: boolean;
-  }>): Array<Array<{ index: number; raw: string; translatable: boolean }>> {
-    const batches: Array<Array<{ index: number; raw: string; translatable: boolean }>> = [];
-    let current: Array<{ index: number; raw: string; translatable: boolean }> = [];
-    let currentChars = 0;
-
-    for (const block of blocks) {
-      const nextChars = currentChars + block.raw.length;
-      const wouldOverflow =
-        current.length >= (this.config.batch?.maxBlocksPerBatch ?? DEFAULT_MAX_BLOCKS_PER_BATCH) ||
-        nextChars > (this.config.batch?.maxCharsPerBatch ?? DEFAULT_MAX_CHARS_PER_BATCH);
-
-      if (wouldOverflow) {
-        if (current.length > 0) {
-          batches.push(current);
-        }
-        current = [];
-        currentChars = 0;
-      }
-
-      current.push(block);
-      currentChars += block.raw.length;
-    }
-
-    if (current.length > 0) {
-      batches.push(current);
-    }
-
-    return batches;
-  }
-
-  private async translateBatchWithFallback(input: {
+  private async translateArticleOnce(input: {
     docKey: string;
     sourceLanguage: string;
     targetLanguage: string;
@@ -343,6 +367,7 @@ export class DocSetProcessor {
     usage: ModelUsageStats;
   }> {
     if (input.blocks.length === 1) {
+      verboseLog('target', 'cyan', `${input.targetLanguage}: only one block changed, using a single direct translation call.`);
       const block = input.blocks[0]!;
       return this.translateSingleBlock({
         sourceLanguage: input.sourceLanguage,
@@ -368,66 +393,27 @@ export class DocSetProcessor {
     };
 
     if (typeof translatorWithBatch.translateBlocks !== 'function') {
-      return this.translateBatchAsSingles(input);
+      throw new Error('Translator does not support whole-article batch translation.');
     }
 
-    try {
-      const translated = await translatorWithBatch.translateBlocks({
-        sourceLanguage: input.sourceLanguage,
-        targetLanguage: input.targetLanguage,
-        memoryText: input.memoryText,
-        docKey: input.docKey,
-        blocks: input.blocks.map((block) => ({
-          index: block.index,
-          sourceBlock: block.raw
-        }))
-      });
+    const translated = await translatorWithBatch.translateBlocks({
+      sourceLanguage: input.sourceLanguage,
+      targetLanguage: input.targetLanguage,
+      memoryText: input.memoryText,
+      docKey: input.docKey,
+      blocks: input.blocks.map((block) => ({
+        index: block.index,
+        sourceBlock: block.raw
+      }))
+    });
 
-      return {
-        items: input.blocks.map((block, idx) => ({
-          index: block.index,
-          text: translated.texts[idx] ?? ''
-        })),
-        usage: translated.usage
-      };
-    } catch (error) {
-      console.warn(
-        `${label('warning', 'yellow')} Batch translation fell back to single-block mode for ${input.targetLanguage}: ${error instanceof Error ? error.message : String(error)}`
-      );
-      return this.translateBatchAsSingles(input);
-    }
-  }
-
-  private async translateBatchAsSingles(input: {
-    docKey: string;
-    sourceLanguage: string;
-    targetLanguage: string;
-    memoryText: string;
-    blocks: Array<{
-      index: number;
-      raw: string;
-      translatable: boolean;
-    }>;
-  }): Promise<{
-    items: Array<{ index: number; text: string }>;
-    usage: ModelUsageStats;
-  }> {
-    const items: Array<{ index: number; text: string }> = [];
-    const usage = zeroUsage();
-
-    for (const block of input.blocks) {
-      const translated = await this.translateSingleBlock({
-        sourceLanguage: input.sourceLanguage,
-        targetLanguage: input.targetLanguage,
-        memoryText: input.memoryText,
-        docKey: input.docKey,
-        block
-      });
-      items.push(...translated.items);
-      addUsage(usage, translated.usage);
-    }
-
-    return { items, usage };
+    return {
+      items: input.blocks.map((block, idx) => ({
+        index: block.index,
+        text: translated.texts[idx] ?? ''
+      })),
+      usage: translated.usage
+    };
   }
 
   private async translateSingleBlock(input: {
@@ -444,6 +430,9 @@ export class DocSetProcessor {
     items: Array<{ index: number; text: string }>;
     usage: ModelUsageStats;
   }> {
+    debugLog(
+      `${input.targetLanguage}: translate single source index ${input.block.index + 1}, chars=${input.block.raw.length}.`
+    );
     const translated = await this.translator.translateBlock({
       sourceLanguage: input.sourceLanguage,
       targetLanguage: input.targetLanguage,
@@ -460,7 +449,7 @@ export class DocSetProcessor {
 
   private async withRateLimitRetry<T>(
     task: () => Promise<T>,
-    requestPool: RequestPool,
+    requestPool?: RequestPool,
     attempt = 1
   ): Promise<T> {
     try {
@@ -470,10 +459,15 @@ export class DocSetProcessor {
         throw error;
       }
 
-      requestPool.noteRateLimit();
+      requestPool?.noteRateLimit();
       const delayMs = 500 * 2 ** (attempt - 1);
       console.warn(
         `${label('warning', 'yellow')} Rate limited. Retrying in ${delayMs}ms (attempt ${attempt + 1}/3).`
+      );
+      verboseLog(
+        'retry',
+        'cyan',
+        `Rate limit retry scheduled after ${delayMs}ms (attempt ${attempt + 1}/3).`
       );
       await sleep(delayMs);
       return this.withRateLimitRetry(task, requestPool, attempt + 1);

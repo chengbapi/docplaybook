@@ -14,9 +14,30 @@ const ANSI = {
 } as const;
 
 let colorEnabled = Boolean(stdout.isTTY && !process.env.NO_COLOR);
+let verboseEnabled = false;
+let debugEnabled = false;
 
 export function setColorEnabled(enabled: boolean): void {
   colorEnabled = enabled;
+}
+
+export function setVerboseEnabled(enabled: boolean): void {
+  verboseEnabled = enabled;
+}
+
+export function isVerboseEnabled(): boolean {
+  return verboseEnabled;
+}
+
+export function setDebugEnabled(enabled: boolean): void {
+  debugEnabled = enabled;
+  if (enabled) {
+    verboseEnabled = true;
+  }
+}
+
+export function isDebugEnabled(): boolean {
+  return debugEnabled;
 }
 
 function apply(code: string, value: string): string {
@@ -114,4 +135,24 @@ export function createLiveLine(prefix: string, color: 'blue' | 'cyan' | 'green' 
       active = false;
     }
   };
+}
+
+export function verboseLog(
+  name: string,
+  color: 'blue' | 'cyan' | 'green' | 'yellow' | 'red' | 'magenta',
+  message: string
+): void {
+  if (!verboseEnabled) {
+    return;
+  }
+
+  console.log(`${label(name, color)} ${message}`);
+}
+
+export function debugLog(message: string): void {
+  if (!debugEnabled) {
+    return;
+  }
+
+  console.log(`${label('debug', 'cyan')} ${message}`);
 }

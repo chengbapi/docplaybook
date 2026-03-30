@@ -8,6 +8,7 @@ import type {
 } from '../types.js';
 import { buildMemoryUpdatePrompt, buildRewriteJudgePrompt } from './prompts.js';
 import type { ModelHandle } from '../model/model-factory.js';
+import { debugLog } from '../ui.js';
 
 export class MemoryUpdater {
   public constructor(private readonly modelHandle: ModelHandle) {}
@@ -18,11 +19,18 @@ export class MemoryUpdater {
     generatedTargetSnapshot: DocumentSnapshot;
     currentTargetSnapshot: DocumentSnapshot;
   }): Promise<RewriteJudgementResult> {
+    const prompt = buildRewriteJudgePrompt(input);
+    debugLog(
+      `rewrite-judge ${input.targetLanguage}: generatedBlocks=${input.generatedTargetSnapshot.blocks.length}, currentBlocks=${input.currentTargetSnapshot.blocks.length}, promptChars=${prompt.length}.`
+    );
     const result = await generateText({
       model: this.modelHandle.model,
-      prompt: buildRewriteJudgePrompt(input)
+      prompt
     });
     const parsed = parseRewriteJudgement(result.text);
+    debugLog(
+      `rewrite-judge ${input.targetLanguage}: isMajorRewrite=${parsed.isMajorRewrite}, reason=${parsed.reason}.`
+    );
 
     return {
       ...parsed,
@@ -43,9 +51,13 @@ export class MemoryUpdater {
       };
     }
 
+    const prompt = buildMemoryUpdatePrompt(input);
+    debugLog(
+      `memory-update ${input.targetLanguage}: corrections=${input.corrections.length}, memoryChars=${input.memoryText.length}, promptChars=${prompt.length}.`
+    );
     const result = await generateText({
       model: this.modelHandle.model,
-      prompt: buildMemoryUpdatePrompt(input)
+      prompt
     });
 
     return {

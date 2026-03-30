@@ -114,6 +114,14 @@ test('DocSetProcessor creates translations while preserving non-translatable cod
         text: translateMarkdownLikeModel(context.sourceBlock, 'EN:'),
         usage: fakeUsage()
       };
+    },
+    async translateBlocks(input: {
+      blocks: Array<{ index: number; sourceBlock: string }>;
+    }): Promise<{ texts: string[]; usage: { inputTokens: number; outputTokens: number; totalTokens: number } }> {
+      return {
+        texts: input.blocks.map((block) => translateMarkdownLikeModel(block.sourceBlock, 'EN:')),
+        usage: fakeUsage(30)
+      };
     }
   } as unknown as Translator;
 
@@ -144,7 +152,7 @@ test('DocSetProcessor creates translations while preserving non-translatable cod
   assert.match(targetRaw, /^# EN:欢迎$/m);
   assert.match(targetRaw, /^EN:这是一段介绍。$/m);
   assert.match(targetRaw, /console\.log\('keep me'\);/);
-  assert.equal(translatorCalls.length, 2);
+  assert.equal(translatorCalls.length, 0);
   assert.equal(memoryUpdateCalls.length, 0);
 });
 
@@ -211,6 +219,15 @@ test('DocSetProcessor can bootstrap README translations for multiple target lang
         ),
         usage: fakeUsage()
       };
+    },
+    async translateBlocks(input: {
+      blocks: Array<{ index: number; sourceBlock: string }>;
+      targetLanguage: string;
+    }): Promise<{ texts: string[]; usage: { inputTokens: number; outputTokens: number; totalTokens: number } }> {
+      return {
+        texts: input.blocks.map((block) => translateMarkdownLikeModel(block.sourceBlock, `${input.targetLanguage.toUpperCase()}:`)),
+        usage: fakeUsage(30)
+      };
     }
   } as unknown as Translator;
 
@@ -243,7 +260,7 @@ test('DocSetProcessor can bootstrap README translations for multiple target lang
   assert.match(readmeEn, /^EN:这是项目说明。$/m);
   assert.match(readmeJa, /^# JA:欢迎$/m);
   assert.match(readmeJa, /^JA:这是项目说明。$/m);
-  assert.equal(translatorCalls.length, 4);
+  assert.equal(translatorCalls.length, 0);
 });
 
 test('DocSetProcessor learns from human corrections and uses updated memory on future syncs', async (t) => {
@@ -281,6 +298,20 @@ test('DocSetProcessor learns from human corrections and uses updated memory on f
           ? translateMarkdownLikeModel(context.sourceBlock, 'EN_WITH_MEMORY:')
           : translateMarkdownLikeModel(context.sourceBlock, 'EN:'),
         usage: fakeUsage()
+      };
+    },
+    async translateBlocks(input: {
+      blocks: Array<{ index: number; sourceBlock: string }>;
+      memoryText: string;
+    }): Promise<{ texts: string[]; usage: { inputTokens: number; outputTokens: number; totalTokens: number } }> {
+      const hasLearnedWikiRule = input.memoryText.includes('Translate "知识库" as "Wiki"');
+      return {
+        texts: input.blocks.map((block) =>
+          hasLearnedWikiRule
+            ? translateMarkdownLikeModel(block.sourceBlock, 'EN_WITH_MEMORY:')
+            : translateMarkdownLikeModel(block.sourceBlock, 'EN:')
+        ),
+        usage: fakeUsage(30)
       };
     }
   } as unknown as Translator;
@@ -382,6 +413,14 @@ test('DocSetProcessor strips outer markdown fences before writing updated memory
         text: translateMarkdownLikeModel(context.sourceBlock, 'EN:'),
         usage: fakeUsage()
       };
+    },
+    async translateBlocks(input: {
+      blocks: Array<{ index: number; sourceBlock: string }>;
+    }): Promise<{ texts: string[]; usage: { inputTokens: number; outputTokens: number; totalTokens: number } }> {
+      return {
+        texts: input.blocks.map((block) => translateMarkdownLikeModel(block.sourceBlock, 'EN:')),
+        usage: fakeUsage(20)
+      };
     }
   } as unknown as Translator;
 
@@ -474,6 +513,14 @@ test('DocSetProcessor skips memory generation for large manual rewrites', async 
         text: translateMarkdownLikeModel(context.sourceBlock, 'EN:'),
         usage: fakeUsage()
       };
+    },
+    async translateBlocks(input: {
+      blocks: Array<{ index: number; sourceBlock: string }>;
+    }): Promise<{ texts: string[]; usage: { inputTokens: number; outputTokens: number; totalTokens: number } }> {
+      return {
+        texts: input.blocks.map((block) => translateMarkdownLikeModel(block.sourceBlock, 'EN:')),
+        usage: fakeUsage(30)
+      };
     }
   } as unknown as Translator;
 
@@ -558,6 +605,14 @@ test('DocSetProcessor strips outer markdown fences from translated blocks', asyn
         text: ['```md', translateMarkdownLikeModel(context.sourceBlock, 'EN:'), '```'].join('\n'),
         usage: fakeUsage()
       };
+    },
+    async translateBlocks(input: {
+      blocks: Array<{ index: number; sourceBlock: string }>;
+    }): Promise<{ texts: string[]; usage: { inputTokens: number; outputTokens: number; totalTokens: number } }> {
+      return {
+        texts: input.blocks.map((block) => ['```md', translateMarkdownLikeModel(block.sourceBlock, 'EN:'), '```'].join('\n')),
+        usage: fakeUsage(30)
+      };
     }
   } as unknown as Translator;
 
@@ -589,7 +644,7 @@ test('DocSetProcessor strips outer markdown fences from translated blocks', asyn
   assert.match(targetRaw, /^# EN:欢迎$/m);
 });
 
-test('DocSetProcessor batches consecutive translatable blocks into fewer model calls', async (t) => {
+test('DocSetProcessor translates one target article in a single model call', async (t) => {
   const root = await createTempWorkspace('batch-translation');
   t.after(async () => {
     await fs.rm(root, { recursive: true, force: true });

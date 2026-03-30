@@ -2,7 +2,77 @@
 
 `docplaybook` 是一个面向 Markdown 文档翻译的本地优先 CLI 工具。
 
-它会监听一个 workspace，将文件归并为多个文档集合，在源文档发生变化时增量更新翻译版本，并从人工编辑中学习可复用的翻译经验。它的长期目标是让核心引擎与文档来源解耦，这样同一套同步和经验学习流程，今天可以用于本地文件，未来也可以用于云文档。
+它会扫描一个 workspace，将文件归并为多个文档集合，按需执行一次增量翻译同步，并从人工编辑中学习可复用的翻译经验。
+
+## 安装
+
+全局安装：
+
+```bash
+npm install -g docplaybook
+```
+
+安装后可以直接使用：
+
+```bash
+docplaybook --help
+docplaybook init ./my-docs
+docplaybook ./my-docs
+```
+
+如果你不想全局安装，也可以直接用 `npx`：
+
+```bash
+npx docplaybook --help
+npx docplaybook init ./my-docs
+npx docplaybook ./my-docs
+```
+
+## 使用
+
+初始化一个 workspace：
+
+```bash
+npm run dev -- init ./examples/sample-workspace
+```
+
+它会：
+
+- 引导你选择模型 provider 和具体 model
+- 完成所需凭证配置，并在准备好后做一次轻量连通性检查
+- 自动识别主文档语言，并让你确认
+- 提示输入 `en,ja` 这样的 target languages
+- 创建 `.docplaybook` 目录以及初始化配置，不会立即开始翻译
+
+如果之后想继续添加语言，可以在同一个 workspace 里再次执行：
+
+```bash
+npm run dev -- init ./examples/sample-workspace
+```
+
+如果你在 CI 或非交互环境里运行，也可以显式传入参数：
+
+```bash
+npm run dev -- init ./examples/sample-workspace --source zh-CN --targets en,ja
+```
+
+执行一次翻译：
+
+```bash
+npm run dev -- ./examples/sample-workspace
+```
+
+查看详细过程：
+
+```bash
+npm run dev -- ./examples/sample-workspace --verbose
+```
+
+查看底层调试信息，例如 block index、prompt 大小和请求队列状态：
+
+```bash
+npm run dev -- ./examples/sample-workspace --debug
+```
 
 ## 为什么经验库很重要
 
@@ -65,29 +135,27 @@
 
 ## 它能做什么
 
-- 监听整个 workspace，而不是只监听单个文件
 - 将多个文档归并为多个 doc set
 - 先支持同级文件布局：`guide.md`、`guide.en.md`、`guide.ja.md`
 - 将 Markdown 拆成 block，只重译发生变化且可翻译的 block
+- 每个 `source -> target` 目标文章只发一次翻译请求，而不是对 block 多次调用模型
 - 保留 frontmatter、代码块、HTML block、分隔线等不可翻译内容
 - 通过更新每个语言对对应的项目级翻译 playbook，从人工修改中学习
 - 将运行时状态保存在仓库之外，避免快照和 hash 污染工作区
 
-## 架构
+## 同步模型
 
-第一版有意拆成几个层次：
+当前版本的同步策略是：
 
-- `DocumentProvider`：文档从哪里来。第一种 provider 是本地文件。
-- `LayoutAdapter`：文件如何映射成逻辑上的 doc set。第一种 preset 是 `sibling`。
-- `TranslationEngine`：基于 Vercel AI SDK 的 block 级翻译。
-- `MemoryEngine`：根据人工修正更新纯文本翻译 playbook。
-- `RuntimeStore`：将快照、hash 和上一次生成的基线保存在仓库之外。
+- 保留 block 级逻辑，用它来判断哪些内容需要重译，以及最终如何按原位置回填
+- 但翻译调用是“按目标文章”进行的：一篇 `guide.en.md` 只发一次模型请求
+- 同一篇文章里需要重译的多个 block 会被打包成一个整体 payload，一次翻译返回后再按 block id 拆回目标位置
+- 并发也只按“文章任务”计算：`concurrency.maxConcurrentRequests` 表示同时有多少篇目标文章在翻译
 
-CLI 内部使用的核心对象有：
+这意味着：
 
-- `Workspace`：一次 `docplaybook <path>` 传入的根目录
-- `DocSet`：一份源文档及其多个翻译版本
-- `DocumentRef`：某一种语言下的一个具体文件
+- 增量更新仍然是 block 级的，不会因为局部改动就整篇重写
+- 但模型调用次数不再随着 block 数量线性增加，更适合长文档
 
 ## 为什么运行态数据放在仓库之外
 
@@ -143,10 +211,6 @@ CLI 内部使用的核心对象有：
   "concurrency": {
     "maxConcurrentRequests": 6
   },
-  "batch": {
-    "maxBlocksPerBatch": 8,
-    "maxCharsPerBatch": 6000
-  },
   "layout": {
     "kind": "sibling"
   },
@@ -160,9 +224,7 @@ CLI 内部使用的核心对象有：
 
 `ignorePatterns` 只用来补充 docplaybook 自己的忽略规则；`.gitignore` 里的规则会默认一起生效，即使这里是空数组。
 
-`concurrency.maxConcurrentRequests` 是一次 sync 里所有 target 和 batch 共享的全局请求并发池，默认 `6`，最高支持 `20`。如果 provider 容易触发限流，先保守一点。
-
-`batch.maxBlocksPerBatch` 可以控制一次批量翻译最多合并多少个 block；如果你觉得长文档调用次数还是太多，可以先调这个值。
+`concurrency.maxConcurrentRequests` 是文章级并发池，表示“同时有多少篇目标文章正在翻译”，默认 `6`，最高支持 `20`。如果 provider 容易触发限流，先保守一点。
 
 `model` 这一段是明确交给用户控制的。API key 永远不应保存在仓库里：
 
@@ -210,8 +272,6 @@ CLI 内部使用的核心对象有：
 
 - `.docplaybook/.env.local`
 - `.docplaybook/.env`
-- `.env.docplaybook.local`（兼容旧位置）
-- `.env.docplaybook`（兼容旧位置）
 - `.env.local`
 - `.env`
 
@@ -250,135 +310,7 @@ CLI 内部使用的核心对象有：
 
 - `sibling`：`guide.md`、`guide.en.md`、`guide.ja.md`
 
-内部模型已经为未来的 preset 预留了形态：
-
-- `docusaurus`
-- `rspress`
-
-这两个目前还是预留状态。当前引擎已经把文档视为“按 doc set 分组的离散文件”，这比“只处理单文件”的模型更适合 docs-as-code 类文档站。
-
-## 安装
-
-项目级安装，适合本地开发：
-
-```bash
-npm install
-```
-
-不做全局安装，直接在仓库里运行：
-
-```bash
-npm run dev -- --help
-```
-
-从本地仓库做全局安装：
-
-```bash
-npm install
-npm run build
-npm link
-```
-
-之后就可以在任意目录中使用：
-
-```bash
-docplaybook --help
-docplaybook init ./my-docs
-docplaybook ./my-docs
-```
-
-先打包再做全局安装：
-
-```bash
-npm pack
-npm install -g ./docplaybook-0.1.0.tgz
-```
-
-移除全局 link：
-
-```bash
-npm unlink -g docplaybook
-```
-
-## 命令
-
-构建：
-
-```bash
-npm run build
-```
-
-初始化一个 workspace，推荐先直接运行交互式初始化：
-
-```bash
-npm run dev -- init ./examples/sample-workspace
-```
-
-它会：
-
-- 先引导你选择模型 provider 和具体 model
-- 完成所需凭证配置，并在准备好后做一次轻量连通性检查
-- 再自动识别主文档语言，并让你确认
-- 然后提示输入 `en,ja` 这样的 target languages
-- 创建 `.docplaybook` 目录以及初始化配置，不会立即开始翻译
-
-如果之后想继续添加语言，可以在同一个 workspace 里再次执行：
-
-```bash
-npm run dev -- init ./examples/sample-workspace
-```
-
-然后输入新的目标语言，例如 `fr,de`。已有语言会保留，只会追加新的语言配置和记忆文件。
-
-如果你在 CI 或非交互环境里运行，也可以显式传入参数：
-
-```bash
-npm run dev -- init ./examples/sample-workspace --source zh-CN --targets en,ja
-```
-
-初始化完成后，你可以按需手动执行一次翻译，或者直接进入 watch 模式。
-
-使用 OpenAI 官方直连初始化：
-
-```bash
-npm run dev -- init ./examples/sample-workspace --model-kind openai --model gpt-5-mini
-```
-
-使用 Anthropic 官方直连初始化：
-
-```bash
-npm run dev -- init ./examples/sample-workspace --model-kind anthropic --model claude-sonnet-4-5
-```
-
-使用自定义 OpenAI 兼容 provider 初始化：
-
-```bash
-npm run dev -- init ./examples/sample-workspace --model-kind openai-compatible --provider-name openrouter --model google/gemini-2.5-flash --api-key-env OPENROUTER_API_KEY --base-url-env OPENROUTER_BASE_URL
-```
-
-默认执行一次后退出：
-
-```bash
-npm run dev -- ./examples/sample-workspace
-```
-
-持续监听：
-
-```bash
-npm run dev -- ./examples/sample-workspace --watch
-```
-
-## 调研记录
-
-当前方案参考了一些解决相邻问题的工具，但它们并没有完整覆盖“本地优先 + 经验学习闭环”这一形态：
-
-- [Azure co-op-translator](https://github.com/Azure/co-op-translator)：它和“增量文档翻译”这个问题非常接近，会跟踪源文和译文状态，只处理变更内容；但它并不是围绕“由人工修正生成可跟踪纯文本经验文件”来设计的。
-- [Lingo.dev CLI](https://lingo.dev/en/cli)：它会维护 delta lock file，并在源文变化前尽量保留人工覆盖，这一点对 docs 仓库里的增量同步行为很有参考价值。
-- [GitLocalize](https://docs.gitlocalize.com/about.html)：它提供基于 segment 的 docs-as-code 持续本地化能力，也支持 translation memory 和 glossary；能力上很接近，但产品形态更偏平台流程，而不是本地 agent 骨架。
-- [Crowdin GitHub integration](https://store.crowdin.com/github)：它代表了一种成熟的持续本地化产品模型，具备 translation memory、AI 和仓库同步能力；但相比这里的本地优先 CLI 方案要重得多。
-- [Docusaurus i18n](https://docusaurus.io/docs/i18n/introduction)：它说明了多语言文档通常会按 locale-aware 目录结构拆成离散文件。
-- [Rspress i18n](https://rspress.rs/guide/basic/i18n)：它同样说明了本地化文档是以离散文件存在的，因此 layout adapter 是有必要的。
-- [Vercel AI SDK provider selection](https://ai-sdk.dev/docs/getting-started/choosing-a-provider)：它说明模型选择应该始终保持用户可配置，而不是被硬编码到工具里。
+目前只实现了 `sibling`。其它 layout 还没有实现。
 
 ## 当前限制
 
@@ -391,6 +323,5 @@ npm run dev -- ./examples/sample-workspace --watch
 ## 近期方向
 
 - 增强对列表、表格等复杂 Markdown 结构的 block 匹配能力
-- 补齐 Docusaurus 和 Rspress 的 layout adapter
-- 增加项目级 revalidation 流程，让新学到的经验可以回扫并检查已有翻译
-- 在不改动核心翻译与经验引擎的前提下，增加飞书文档等云文档 provider
+- 增加项目级 revise 流程，让新学到的经验可以按语言聚合后再更新 memory
+- 继续优化长文档下的翻译耗时与可观测性
