@@ -1,0 +1,42 @@
+{
+  "name": "docplaybook",
+  "version": "0.1.0",
+  "description": "A local-first CLI for Markdown translation sync and reusable translation memory.",
+  "type": "module",
+  "bin": {
+    "docplaybook": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx src/cli.ts",
+    "test": "node --import tsx --test test/**/*.test.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "@ai-sdk/anthropic": "^3.0.64",
+    "@ai-sdk/openai": "^3.0.48",
+    "@ai-sdk/openai-compatible": "^2.0.37",
+    "ai": "^6.0.140",
+    "chokidar": "^5.0.0",
+    "commander": "^14.0.1",
+    "dotenv": "^17.3.1",
+    "franc": "^6.2.0",
+    "mdast-util-from-markdown": "^2.0.2",
+    "mdast-util-gfm": "^3.1.0",
+    "micromark-extension-gfm": "^3.0.0",
+    "picomatch": "^4.0.3",
+    "zod": "^4.1.5"
+  },
+  "devDependencies": {
+    "@types/node": "^24.5.2",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2"
+  }
+}

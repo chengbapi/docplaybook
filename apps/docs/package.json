@@ -1,0 +1,13 @@
+{
+  "name": "@docplaybook/docs",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "rspress dev docs",
+    "build": "rspress build docs",
+    "preview": "rspress preview docs"
+  },
+  "devDependencies": {
+    "rspress": "latest"
+  }
+}
