@@ -32,15 +32,15 @@ export class DocSetProcessor {
     private readonly memoryUpdater: MemoryUpdater,
     private readonly managedWrites: Set<string>
   ) {
-    this.memoryStore = new MemoryStore(workspaceRoot, config.sourceLanguage);
+    this.memoryStore = new MemoryStore(workspaceRoot);
   }
 
   public async processDocSet(docSet: DocSet, reason: string): Promise<void> {
-    await this.learnWorkspace([docSet]);
-    await this.translateDocSet(docSet, reason);
+    await this.learnWorkspace([docSet], this.config.targetLanguages);
+    await this.translateDocSet(docSet, reason, this.config.targetLanguages);
   }
 
-  public async translateDocSet(docSet: DocSet, reason: string): Promise<void> {
+  public async translateDocSet(docSet: DocSet, reason: string, targetLanguages: string[]): Promise<void> {
     const startedAt = Date.now();
     const totals = zeroUsage();
     const state = await this.runtimeStore.load();
@@ -53,7 +53,7 @@ export class DocSetProcessor {
     const sourceRaw = await this.provider.read(docSet.source.relativePath);
     const currentSourceSnapshot = parseMarkdownSnapshot(docSet.source.relativePath, sourceRaw);
     console.log(
-      `${label('translate', 'blue')} ${docSet.source.relativePath} (${this.config.targetLanguages.join(', ')}, reason: ${reason})`
+      `${label('translate', 'blue')} ${docSet.source.relativePath} (${targetLanguages.join(', ')}, reason: ${reason})`
     );
     verboseLog(
       'sync',
@@ -74,7 +74,7 @@ export class DocSetProcessor {
     );
 
     const targetResults = await Promise.all(
-      this.config.targetLanguages.map(async (targetLanguage) => {
+      targetLanguages.map(async (targetLanguage) => {
         const nextTarget = await requestPool.run(() =>
           this.syncTarget({
             docSet,
@@ -113,7 +113,7 @@ export class DocSetProcessor {
     );
   }
 
-  public async learnWorkspace(docSets: DocSet[]): Promise<void> {
+  public async learnWorkspace(docSets: DocSet[], targetLanguages: string[]): Promise<void> {
     const startedAt = Date.now();
     const totals = zeroUsage();
     const state = await this.runtimeStore.load();
@@ -126,7 +126,7 @@ export class DocSetProcessor {
         continue;
       }
 
-      for (const targetLanguage of this.config.targetLanguages) {
+      for (const targetLanguage of targetLanguages) {
         const targetRef = docSet.targets[targetLanguage];
         const previousTargetState = docState.targets[targetLanguage];
         if (!previousTargetState?.generated) {
@@ -182,14 +182,29 @@ export class DocSetProcessor {
       }
     }
 
-    for (const targetLanguage of this.config.targetLanguages) {
+    for (const targetLanguage of targetLanguages) {
       const corrections = correctionsByLanguage.get(targetLanguage) ?? [];
       if (corrections.length === 0) {
         continue;
       }
 
+      const currentPlaybook = await this.memoryStore.readPlaybook();
+      const updatedPlaybook = await this.memoryUpdater.updateMemory({
+        scope: 'playbook',
+        sourceLanguage: this.config.sourceLanguage,
+        targetLanguage,
+        memoryText: currentPlaybook,
+        corrections
+      });
+      addUsage(totals, updatedPlaybook.usage);
+      await this.memoryStore.writePlaybook(stripOuterMarkdownFence(updatedPlaybook.text));
+      console.log(
+        `${label('memory', 'magenta')} Updated global playbook from ${targetLanguage} review corrections.`
+      );
+
       const currentMemory = await this.memoryStore.read(targetLanguage);
       const updatedMemory = await this.memoryUpdater.updateMemory({
+        scope: 'memory',
         sourceLanguage: this.config.sourceLanguage,
         targetLanguage,
         memoryText: currentMemory,
@@ -227,7 +242,7 @@ export class DocSetProcessor {
   }> {
     const targetRef = input.docSet.targets[input.targetLanguage];
     console.log(`${label('translate', 'blue')} ${input.docSet.source.relativePath} -> ${targetRef.relativePath}`);
-    const currentMemory = await this.memoryStore.read(input.targetLanguage);
+    const currentMemory = await this.memoryStore.readPromptContext(input.targetLanguage);
     const targetExists = await this.provider.exists(targetRef.relativePath);
     const currentTargetSnapshot = targetExists
       ? parseMarkdownSnapshot(targetRef.relativePath, await this.provider.read(targetRef.relativePath))

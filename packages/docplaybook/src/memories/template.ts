@@ -1,54 +1,54 @@
-const STANDARD_SECTIONS = [
-  'Terminology',
-  'Tone & Style',
-  'Formatting & Markdown',
-  'Protected Terms',
-  'Review Notes'
-] as const;
+const PLAYBOOK_SECTIONS = ['Voice', 'Protected Terms', 'Translation Rules'] as const;
+const MEMORY_SECTIONS = ['Terminology', 'Style Notes'] as const;
 
-export function renderInitialMemory(sourceLanguage: string, targetLanguage: string): string {
+export function renderInitialPlaybook(): string {
   return [
-    `# Translation Playbook: ${sourceLanguage} -> ${targetLanguage}`,
+    '# Playbook',
     '',
-    'This file is injected into every translation prompt for this language pair.',
+    'This file stores reusable translation guidance that applies across every target language.',
     '',
-    '## Terminology',
+    '## Voice',
     '',
-    '- Add approved translations for product terms and recurring vocabulary.',
-    '',
-    '## Tone & Style',
-    '',
-    '- Describe the preferred tone, sentence style, and level of formality.',
-    '',
-    '## Formatting & Markdown',
-    '',
-    '- Record Markdown-specific rules, capitalization patterns, and formatting constraints.',
+    '- Describe the overall documentation voice, such as technical, direct, calm, or concise.',
     '',
     '## Protected Terms',
     '',
-    '- List names, commands, API fields, and branded terms that should stay unchanged.',
+    '- List names, commands, API fields, paths, and branded terms that should stay unchanged.',
     '',
-    '## Review Notes',
+    '## Translation Rules',
     '',
-    '- Add concise reusable review lessons. Remove stale rules when newer ones replace them.',
+    '- Record concise language-agnostic rules, such as preserving structure, warnings, and code.',
     ''
   ].join('\n');
 }
 
-export function normalizeMemoryText(
-  sourceLanguage: string,
-  targetLanguage: string,
-  content: string
-): { text: string; addedSections: string[] } {
+export function renderInitialMemory(targetLanguage: string): string {
+  return [
+    `# Memory: ${targetLanguage}`,
+    '',
+    `This file stores reusable translation guidance specific to ${targetLanguage}.`,
+    '',
+    '## Terminology',
+    '',
+    '- Add approved translations for recurring product terms and technical vocabulary.',
+    '',
+    '## Style Notes',
+    '',
+    '- Describe language-specific preferences, such as formality, sentence style, or punctuation.',
+    ''
+  ].join('\n');
+}
+
+export function normalizePlaybookText(content: string): { text: string; addedSections: string[] } {
   const normalized = content.trimEnd();
   const lines = normalized.length > 0 ? normalized.split('\n') : [];
-  const expectedTitle = `# Translation Playbook: ${sourceLanguage} -> ${targetLanguage}`;
+  const expectedTitle = '# Playbook';
   const nextLines = [...lines];
 
   if (nextLines.length === 0) {
     return {
-      text: renderInitialMemory(sourceLanguage, targetLanguage).trimEnd(),
-      addedSections: [...STANDARD_SECTIONS]
+      text: renderInitialPlaybook().trimEnd(),
+      addedSections: [...PLAYBOOK_SECTIONS]
     };
   }
 
@@ -59,7 +59,46 @@ export function normalizeMemoryText(
   }
 
   const addedSections: string[] = [];
-  for (const section of STANDARD_SECTIONS) {
+  for (const section of PLAYBOOK_SECTIONS) {
+    const heading = `## ${section}`;
+    if (nextLines.some((line) => line.trim() === heading)) {
+      continue;
+    }
+
+    addedSections.push(section);
+    nextLines.push('', heading, '', '-');
+  }
+
+  return {
+    text: nextLines.join('\n').trimEnd(),
+    addedSections
+  };
+}
+
+export function normalizeMemoryText(
+  targetLanguage: string,
+  content: string
+): { text: string; addedSections: string[] } {
+  const normalized = content.trimEnd();
+  const lines = normalized.length > 0 ? normalized.split('\n') : [];
+  const expectedTitle = `# Memory: ${targetLanguage}`;
+  const nextLines = [...lines];
+
+  if (nextLines.length === 0) {
+    return {
+      text: renderInitialMemory(targetLanguage).trimEnd(),
+      addedSections: [...MEMORY_SECTIONS]
+    };
+  }
+
+  if (!nextLines[0]?.startsWith('# ')) {
+    nextLines.unshift('', expectedTitle);
+  } else {
+    nextLines[0] = expectedTitle;
+  }
+
+  const addedSections: string[] = [];
+  for (const section of MEMORY_SECTIONS) {
     const heading = `## ${section}`;
     if (nextLines.some((line) => line.trim() === heading)) {
       continue;

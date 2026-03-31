@@ -1,15 +1,23 @@
 import { fromMarkdown } from 'mdast-util-from-markdown';
 import { gfmFromMarkdown } from 'mdast-util-gfm';
+import { mdxFromMarkdown } from 'mdast-util-mdx';
 import { gfm } from 'micromark-extension-gfm';
+import { mdxjs } from 'micromark-extension-mdxjs';
 import type { DocumentSnapshot, MarkdownBlock } from '../types.js';
 import { nowIso, sha256 } from '../utils.js';
+import { getSupportedMarkdownExtension } from './files.js';
 
 const NON_TRANSLATABLE_TYPES = new Set([
   'code',
   'definition',
   'frontmatter',
   'html',
-  'thematicBreak'
+  'thematicBreak',
+  'mdxFlowExpression',
+  'mdxTextExpression',
+  'mdxJsxFlowElement',
+  'mdxJsxTextElement',
+  'mdxjsEsm'
 ]);
 
 interface FrontmatterSlice {
@@ -73,6 +81,8 @@ export function parseMarkdownSnapshot(relativePath: string, raw: string): Docume
   const blocks: MarkdownBlock[] = [];
   let tail = '';
   let blockIndex = 0;
+  const extension = getSupportedMarkdownExtension(relativePath);
+  const isMdx = extension === '.mdx';
 
   if (frontmatterRaw) {
     blocks.push(makeBlock(blockIndex, 'frontmatter', '', frontmatterRaw));
@@ -81,8 +91,8 @@ export function parseMarkdownSnapshot(relativePath: string, raw: string): Docume
 
   if (body.length > 0) {
     const tree = fromMarkdown(body, {
-      extensions: [gfm()],
-      mdastExtensions: [gfmFromMarkdown()]
+      extensions: isMdx ? [gfm(), mdxjs()] : [gfm()],
+      mdastExtensions: isMdx ? [gfmFromMarkdown(), mdxFromMarkdown()] : [gfmFromMarkdown()]
     });
 
     const children = tree.children.filter((child): child is (typeof tree.children)[number] & {

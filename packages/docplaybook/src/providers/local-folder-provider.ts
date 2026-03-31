@@ -4,6 +4,7 @@ import chokidar from 'chokidar';
 import picomatch from 'picomatch';
 import type { ProviderEvent } from '../types.js';
 import { pathExists } from '../utils.js';
+import { isSupportedMarkdownPath } from '../markdown/files.js';
 
 export class LocalFolderProvider {
   private readonly ignoreMatcherPromise: Promise<(relativePath: string) => boolean>;
@@ -47,7 +48,7 @@ export class LocalFolderProvider {
 
     watcher.on('all', (kind, absolutePath) => {
       const relativePath = this.toRelativePath(absolutePath);
-      if (!relativePath.endsWith('.md')) {
+      if (!isSupportedMarkdownPath(relativePath)) {
         return;
       }
 
@@ -83,7 +84,7 @@ export class LocalFolderProvider {
         continue;
       }
 
-      if (entry.isFile() && relativePath.endsWith('.md')) {
+      if (entry.isFile() && isSupportedMarkdownPath(relativePath)) {
         files.push(relativePath);
       }
     }

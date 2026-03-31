@@ -2,7 +2,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
 import { UserFacingError } from './errors.js';
-import { renderInitialMemory } from './memories/template.js';
+import { renderInitialMemory, renderInitialPlaybook } from './memories/template.js';
 import type { AppConfig, LayoutKind, ModelConfig, ModelKind, StoredAppConfig } from './types.js';
 import { ensureDir, nowIso, pathExists, unique } from './utils.js';
 import { resolveModelConfig } from './model/model-config.js';
@@ -49,7 +49,7 @@ const configSchema = z.object({
     maxCharsPerBatch: z.number().int().positive().optional()
   }).strict().optional(),
   layout: z.object({
-    kind: z.enum(['sibling', 'docusaurus', 'rspress'])
+    kind: z.enum(['sibling', 'docusaurus', 'rspress', 'vitepress'])
   }).strict(),
   model: z.union([
     gatewayModelSchema,
@@ -71,6 +71,7 @@ export interface InitOptions {
 export const CONFIG_DIRNAME = '.docplaybook';
 export const CONFIG_BASENAME = 'config.json';
 export const MEMORIES_DIRNAME = 'memories';
+export const PLAYBOOK_BASENAME = 'playbook.md';
 export const DEFAULT_IGNORE_PATTERNS = [
   '**/node_modules/**',
   '**/.git/**',
@@ -92,6 +93,10 @@ export function getConfigPath(workspaceRoot: string): string {
 
 export function getMemoriesDir(workspaceRoot: string): string {
   return path.join(getConfigDir(workspaceRoot), MEMORIES_DIRNAME);
+}
+
+export function getPlaybookPath(workspaceRoot: string): string {
+  return path.join(getConfigDir(workspaceRoot), PLAYBOOK_BASENAME);
 }
 
 function parseJsonc(raw: string): unknown {
@@ -257,6 +262,15 @@ export async function initWorkspaceConfig(options: InitOptions): Promise<void> {
 
   await fs.writeFile(configPath, renderConfigJsonc(config), 'utf8');
 
+  const playbookPath = getPlaybookPath(options.workspaceRoot);
+  if (!(await pathExists(playbookPath)) || options.force) {
+    const playbookSeed = renderInitialPlaybook().replace(
+      '## Voice',
+      `- Updated: ${nowIso()}\n\n## Voice`
+    );
+    await fs.writeFile(playbookPath, playbookSeed, 'utf8');
+  }
+
   for (const targetLanguage of config.targetLanguages) {
     const memoryPath = path.join(getMemoriesDir(options.workspaceRoot), `${targetLanguage}.md`);
 
@@ -264,7 +278,7 @@ export async function initWorkspaceConfig(options: InitOptions): Promise<void> {
       continue;
     }
 
-    const seed = renderInitialMemory(config.sourceLanguage, targetLanguage).replace(
+    const seed = renderInitialMemory(targetLanguage).replace(
       '## Terminology',
       `- Updated: ${nowIso()}\n\n## Terminology`
     );

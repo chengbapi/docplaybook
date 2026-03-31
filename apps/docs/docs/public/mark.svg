@@ -1,0 +1,10 @@
+<svg width="1200" height="320" viewBox="0 0 1200 320" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1200" height="320" fill="#FFFDF8"/>
+  <path d="M76 66H216C252.451 66 282 95.5492 282 132V188C282 224.451 252.451 254 216 254H76V66Z" fill="#F59E0B"/>
+  <path d="M108 98H202C225.196 98 244 116.804 244 140V180C244 203.196 225.196 222 202 222H108V98Z" fill="#111827"/>
+  <path d="M128 126H194" stroke="#F8FAFC" stroke-width="14" stroke-linecap="round"/>
+  <path d="M128 154H178" stroke="#CBD5E1" stroke-width="10" stroke-linecap="round"/>
+  <path d="M128 180H188" stroke="#CBD5E1" stroke-width="10" stroke-linecap="round"/>
+  <text x="332" y="148" fill="#111827" font-family="'Iowan Old Style', Georgia, serif" font-size="82" font-weight="700">DocPlaybook</text>
+  <text x="336" y="205" fill="#78716C" font-family="'Avenir Next', 'Segoe UI', sans-serif" font-size="29" letter-spacing="5">AI-POWERED DOCUMENT TRANSLATION</text>
+</svg>

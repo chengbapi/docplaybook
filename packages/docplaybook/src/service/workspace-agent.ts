@@ -1,4 +1,3 @@
-import path from 'node:path';
 import type { AppConfig, DocSet, ProviderEvent } from '../types.js';
 import { createLayoutAdapter } from '../layouts/index.js';
 import { LocalFolderProvider } from '../providers/local-folder-provider.js';
@@ -9,7 +8,8 @@ import { MemoryUpdater } from '../translation/memory-updater.js';
 import { QualityLinter } from '../quality/linter.js';
 import { label } from '../ui.js';
 import { DocSetProcessor } from './docset-processor.js';
-import { WorkspaceLinter } from './workspace-linter.js';
+import { type LintScope, WorkspaceLinter } from './workspace-linter.js';
+import { getSupportedMarkdownExtension } from '../markdown/files.js';
 
 export class WorkspaceAgent {
   private readonly provider: LocalFolderProvider;
@@ -52,25 +52,45 @@ export class WorkspaceAgent {
   }
 
   public async translateOnce(): Promise<void> {
+    await this.translateOnceForLanguages(this.config.targetLanguages);
+  }
+
+  public async translateOnceForLanguages(targetLanguages: string[]): Promise<void> {
     await this.refreshDocSets();
     for (const docSet of this.docSets) {
-      await this.processor.translateDocSet(docSet, 'startup');
+      await this.processor.translateDocSet(docSet, 'startup', targetLanguages);
     }
   }
 
   public async learnOnce(): Promise<void> {
+    await this.learnOnceForLanguages(this.config.targetLanguages);
+  }
+
+  public async learnOnceForLanguages(targetLanguages: string[]): Promise<void> {
     await this.refreshDocSets();
-    await this.processor.learnWorkspace(this.docSets);
+    await this.processor.learnWorkspace(this.docSets, targetLanguages);
   }
 
   public async autoOnce(): Promise<void> {
-    await this.translateOnce();
-    await this.learnOnce();
+    await this.autoOnceForLanguages(this.config.targetLanguages);
   }
 
-  public async lintOnce(fix: boolean): Promise<void> {
+  public async autoOnceForLanguages(targetLanguages: string[]): Promise<void> {
+    await this.translateOnceForLanguages(targetLanguages);
+    await this.learnOnceForLanguages(targetLanguages);
+  }
+
+  public async lintOnce(fix: boolean, scope: LintScope): Promise<void> {
+    await this.lintOnceForLanguages(fix, scope, this.config.targetLanguages);
+  }
+
+  public async lintOnceForLanguages(
+    fix: boolean,
+    scope: LintScope,
+    targetLanguages: string[]
+  ): Promise<void> {
     await this.refreshDocSets();
-    await this.workspaceLinter.lintDocSets(this.docSets, fix);
+    await this.workspaceLinter.lintDocSets(this.docSets, fix, scope, targetLanguages);
   }
 
   private async refreshDocSets(): Promise<void> {
@@ -113,7 +133,7 @@ export class WorkspaceAgent {
     }
 
     const timer = setTimeout(() => {
-      void this.processor.translateDocSet(docSet, reason).catch((error: unknown) => {
+      void this.processor.translateDocSet(docSet, reason, this.config.targetLanguages).catch((error: unknown) => {
         const message = error instanceof Error ? error.stack ?? error.message : String(error);
         console.error(`${label('error', 'red')} Failed to process ${docSet.docKey}: ${message}`);
       });
@@ -124,8 +144,8 @@ export class WorkspaceAgent {
   }
 
   private findSiblingDocSetForDeletedTarget(relativePath: string): DocSet | undefined {
-    const extension = path.extname(relativePath);
-    if (extension !== '.md') {
+    const extension = getSupportedMarkdownExtension(relativePath);
+    if (!extension) {
       return undefined;
     }
 

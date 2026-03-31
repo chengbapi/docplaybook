@@ -10,7 +10,7 @@ export function buildTranslationSystemPrompt(context: TranslationContext): strin
     'Keep tone consistent with technical documentation.',
     'If the source block should remain unchanged, return it unchanged.',
     '',
-    'Project translation playbook:',
+    'Project translation guidance:',
     context.memoryText.trim() || '(empty)'
   ].join('\n');
 }
@@ -71,6 +71,7 @@ export function buildBatchTranslationPrompt(input: {
 }
 
 export function buildMemoryUpdatePrompt(input: {
+  scope: 'playbook' | 'memory';
   sourceLanguage: string;
   targetLanguage: string;
   memoryText: string;
@@ -100,15 +101,22 @@ export function buildMemoryUpdatePrompt(input: {
     .join('\n\n');
 
   return [
-    `You maintain a reusable translation playbook for ${input.sourceLanguage} -> ${input.targetLanguage}.`,
-    'Update the playbook using the corrections below.',
+    input.scope === 'playbook'
+      ? `You maintain a global translation playbook for ${input.sourceLanguage} source documents across all target languages.`
+      : `You maintain a reusable language memory for ${input.targetLanguage} translations from ${input.sourceLanguage}.`,
+    input.scope === 'playbook'
+      ? 'Update the playbook using the corrections below.'
+      : 'Update the language memory using the corrections below.',
     'Keep the file concise, deduplicated, and written for future LLM prompts.',
-    'Only keep reusable translation guidance. Ignore one-off content edits.',
+    input.scope === 'playbook'
+      ? 'Keep only language-agnostic reusable guidance. Do not store language-specific terminology lists here.'
+      : 'Keep only target-language-specific reusable guidance, such as terminology and style notes.',
+    'Ignore one-off content edits.',
     'If a new rule conflicts with an older rule, keep the new rule and remove or rewrite the old one.',
     'Do not add ```md, ```markdown, or any other fenced code wrapper.',
     'Return the full updated Markdown file and nothing else.',
     '',
-    'Current playbook:',
+    input.scope === 'playbook' ? 'Current playbook:' : 'Current language memory:',
     '```md',
     input.memoryText.trim(),
     '```',

@@ -354,13 +354,15 @@ test('DocSetProcessor learns from human corrections and uses updated memory on f
 
   await processor.processDocSet(docSet, 'manual-edit');
 
-  assert.equal(memoryUpdateCalls.length, 1);
+  assert.equal(memoryUpdateCalls.length, 2);
   assert.equal(memoryUpdateCalls[0]?.length, 1);
   assert.equal(memoryUpdateCalls[0]?.[0]?.correctedTranslation, 'Feishu Wiki supports permission control.');
 
-  const memoryStore = new MemoryStore(root, 'zh-CN');
+  const memoryStore = new MemoryStore(root);
   const updatedMemory = await memoryStore.read('en');
   assert.match(updatedMemory, /Translate "知识库" as "Wiki"/);
+  const updatedPlaybook = await memoryStore.readPlaybook();
+  assert.match(updatedPlaybook, /Translate "知识库" as "Wiki"/);
 
   await fs.writeFile(
     path.join(root, 'docs/guide.md'),
@@ -454,7 +456,7 @@ test('DocSetProcessor strips outer markdown fences before writing updated memory
 
   await processor.processDocSet(docSet, 'manual-edit');
 
-  const memoryStore = new MemoryStore(root, 'zh-CN');
+  const memoryStore = new MemoryStore(root);
   const updatedMemory = await memoryStore.read('en');
   assert.doesNotMatch(updatedMemory, /```md/);
   assert.doesNotMatch(updatedMemory, /^```$/m);
@@ -561,7 +563,7 @@ test('DocSetProcessor skips memory generation for large manual rewrites', async 
   ].join('\n');
   await fs.writeFile(path.join(root, 'docs/guide.en.md'), rewrittenTarget, 'utf8');
 
-  const memoryStore = new MemoryStore(root, 'zh-CN');
+  const memoryStore = new MemoryStore(root);
   const beforeMemory = await memoryStore.read('en');
 
   await processor.processDocSet(docSet, 'manual-rewrite');

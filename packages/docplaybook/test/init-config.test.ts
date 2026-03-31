@@ -50,6 +50,40 @@ test('detectWorkspaceSourceLanguage prefers workspace markdown and detects Chine
   assert.equal(detected.sampleFiles.includes('.docplaybook/memories/en.md'), false);
 });
 
+test('detectWorkspaceSourceLanguage accepts README.mdx samples', async (t) => {
+  const root = await createTempWorkspace('detect-language-mdx');
+  t.after(async () => {
+    await fs.rm(root, { recursive: true, force: true });
+  });
+
+  await fs.writeFile(
+    path.join(root, 'README.mdx'),
+    [
+      "import { Callout } from './callout';",
+      '',
+      '# 欢迎使用',
+      '',
+      '<Callout type="tip">不要翻译组件名。</Callout>',
+      '',
+      '这是一个中文 MDX 项目说明文档，用来测试主语言识别功能是否会优先读取 README，而不是内部 memory 或目标语言文件。',
+      '',
+      '它包含安装、初始化、翻译、学习和 lint 等说明，整体内容都应该被判断为中文。',
+      '',
+      '## 使用方式',
+      '',
+      '先安装依赖，再执行初始化，然后根据需要运行 translate、learn 和 lint。',
+      ''
+    ].join('\n'),
+    'utf8'
+  );
+
+  const detected = await detectWorkspaceSourceLanguage(root);
+
+  assert.ok(detected);
+  assert.equal(detected.language, 'zh-CN');
+  assert.deepEqual(detected.sampleFiles, ['README.mdx']);
+});
+
 test('initWorkspaceConfig merges target languages on repeated init', async (t) => {
   const root = await createTempWorkspace('merge-targets');
   t.after(async () => {
@@ -228,9 +262,10 @@ test('LocalFolderProvider applies .gitignore rules in addition to ignorePatterns
   await fs.writeFile(path.join(root, 'ignored-docs', 'a.md'), '# hidden\n', 'utf8');
   await fs.writeFile(path.join(root, 'docs', 'guide.secret.md'), '# hidden too\n', 'utf8');
   await fs.writeFile(path.join(root, 'docs', 'guide.md'), '# visible\n', 'utf8');
+  await fs.writeFile(path.join(root, 'docs', 'guide.mdx'), '# visible mdx\n', 'utf8');
 
   const provider = new LocalFolderProvider(root, []);
   const files = await provider.scanMarkdownFiles();
 
-  assert.deepEqual(files, ['docs/guide.md']);
+  assert.deepEqual(files, ['docs/guide.md', 'docs/guide.mdx']);
 });

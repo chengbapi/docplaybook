@@ -40,7 +40,7 @@ docplaybook init ./examples/sample-workspace
 
 - 引导你选择模型 provider 和具体 model
 - 完成所需凭证配置，并在准备好后做一次轻量连通性检查
-- 自动识别项目布局。当前会识别 `docusaurus`、`rspress`，否则回退到 `sibling`
+- 自动识别项目布局。当前会识别 `docusaurus`、`rspress`、`vitepress`，否则回退到 `sibling`
 - 自动识别主文档语言，并让你确认
 - 提示输入 `en,ja` 这样的 target languages
 - 创建 `.docplaybook` 目录以及初始化配置，不会立即开始翻译
@@ -161,7 +161,7 @@ docplaybook lint ./examples/sample-workspace --fix
 ## 它能做什么
 
 - 将多个文档归并为多个 doc set
-- 支持三种布局：`sibling`、`docusaurus`、`rspress`
+- 支持四种布局：`sibling`、`docusaurus`、`rspress`、`vitepress`
 - 将 Markdown 拆成 block，只重译发生变化且可翻译的 block
 - 每个 `source -> target` 目标文章只发一次翻译请求，而不是对 block 多次调用模型
 - 保留 frontmatter、代码块、HTML block、分隔线等不可翻译内容
@@ -181,6 +181,10 @@ docplaybook lint ./examples/sample-workspace --fix
   - 检测到 `rspress.config.*`、`.rspress/config.*` 或 `docs/.rspress/config.*`
   - source: `docs/**/*.md`
   - target: `docs/<lang>/**/*.md`
+- `vitepress`
+  - 检测到 `.vitepress/config.*` 或 `docs/.vitepress/config.*`
+  - source: `docs/**/*.md`
+  - target: `docs/<lang>/**/*.md`
 - `sibling`
   - 如果都没检测到，就使用同级文件布局
   - source: `guide.md`
@@ -191,6 +195,7 @@ docplaybook lint ./examples/sample-workspace --fix
 - `examples/sample-workspace`
 - `examples/docusaurus-workspace`
 - `examples/rspress-workspace`
+- `examples/vitepress-workspace`
 
 ## 同步模型
 
@@ -267,13 +272,15 @@ docplaybook lint ./examples/sample-workspace --fix
 
 `.docplaybook/config.json` 按 JSONC 读取，所以可以包含 `//` 或 `/* ... */` 注释，方便把说明直接写在配置旁边。
 
-每个 memory 文件都会按标准格式维护这些章节：
+DocPlaybook 会维护两层 AI 生成的翻译规则文件：
 
-- `## Terminology`
-- `## Tone & Style`
-- `## Formatting & Markdown`
-- `## Protected Terms`
-- `## Review Notes`
+- `.docplaybook/playbook.md`
+  - `## Voice`
+  - `## Protected Terms`
+  - `## Translation Rules`
+- `.docplaybook/memories/<target>.md`
+  - `## Terminology`
+  - `## Style Notes`
 
 使用 Vercel AI Gateway 的 `.docplaybook/config.json` 示例：
 

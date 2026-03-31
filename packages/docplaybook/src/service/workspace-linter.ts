@@ -4,6 +4,9 @@ import { MemoryStore } from '../memories/memory-store.js';
 import { LocalFolderProvider } from '../providers/local-folder-provider.js';
 import { QualityLinter } from '../quality/linter.js';
 import { bold, formatDuration, label } from '../ui.js';
+import { getChangedWorkspaceFiles } from '../git/changed-files.js';
+
+export type LintScope = 'changed' | 'all';
 
 export interface WorkspaceLintSummary {
   findings: number;
@@ -24,10 +27,15 @@ export class WorkspaceLinter {
     private readonly provider: LocalFolderProvider,
     private readonly linter: QualityLinter
   ) {
-    this.memoryStore = new MemoryStore(workspaceRoot, config.sourceLanguage);
+    this.memoryStore = new MemoryStore(workspaceRoot);
   }
 
-  public async lintDocSets(docSets: DocSet[], fix: boolean): Promise<WorkspaceLintSummary> {
+  public async lintDocSets(
+    docSets: DocSet[],
+    fix: boolean,
+    scope: LintScope,
+    targetLanguages: string[]
+  ): Promise<WorkspaceLintSummary> {
     const startedAt = Date.now();
     const totals = zeroUsage();
     let findings = 0;
@@ -36,6 +44,19 @@ export class WorkspaceLinter {
     let infos = 0;
     let documents = 0;
     let scoreSum = 0;
+    const changedFiles = scope === 'changed' ? await getChangedWorkspaceFiles(this.workspaceRoot) : null;
+
+    if (scope === 'changed') {
+      if (changedFiles) {
+        console.log(
+          `${label('lint', 'blue')} Scope ${bold('changed')}: checking translated files changed in git status.`
+        );
+      } else {
+        console.log(
+          `${label('lint', 'yellow')} Could not read git changes. Falling back to ${bold('all')} translated files.`
+        );
+      }
+    }
 
     for (const docSet of docSets) {
       const sourceSnapshot = parseMarkdownSnapshot(
@@ -43,8 +64,12 @@ export class WorkspaceLinter {
         await this.provider.read(docSet.source.relativePath)
       );
 
-      for (const targetLanguage of this.config.targetLanguages) {
+      for (const targetLanguage of targetLanguages) {
         const targetRef = docSet.targets[targetLanguage];
+        if (changedFiles && !changedFiles.has(targetRef.relativePath)) {
+          continue;
+        }
+
         if (!(await this.provider.exists(targetRef.relativePath))) {
           continue;
         }
@@ -55,20 +80,34 @@ export class WorkspaceLinter {
           await this.provider.read(targetRef.relativePath)
         );
 
+        const playbookRaw = await this.memoryStore.readPlaybook();
+        const normalizedPlaybook = this.memoryStore.normalizePlaybook(playbookRaw);
         const memoryRaw = await this.memoryStore.read(targetLanguage);
         const normalizedMemory = this.memoryStore.normalize(targetLanguage, memoryRaw);
-        const memoryFindings = normalizedMemory.addedSections.map<LintFinding>((section) => ({
-          severity: 'warn',
-          category: 'memory',
-          message: `Memory file was missing the "${section}" section.`,
-          suggestion: `Add reusable guidance under "${section}" so linting has a clearer standard.`
-        }));
+        const memoryFindings = [
+          ...normalizedPlaybook.addedSections.map<LintFinding>((section) => ({
+            severity: 'warn',
+            category: 'memory',
+            message: `Playbook was missing the "${section}" section.`,
+            suggestion: `Add reusable global guidance under "${section}".`
+          })),
+          ...normalizedMemory.addedSections.map<LintFinding>((section) => ({
+            severity: 'warn',
+            category: 'memory',
+            message: `Memory file was missing the "${section}" section.`,
+            suggestion: `Add reusable guidance under "${section}" so linting has a clearer standard.`
+          }))
+        ];
 
         const lintResult = await this.linter.lintDocument({
           sourceLanguage: this.config.sourceLanguage,
           targetLanguage,
           docKey: docSet.docKey,
-          memoryText: normalizedMemory.text,
+          memoryText: this.memoryStore.composePromptContext(
+            normalizedPlaybook.text,
+            normalizedMemory.text,
+            targetLanguage
+          ),
           sourceSnapshot,
           targetSnapshot,
           fix
@@ -86,6 +125,10 @@ export class WorkspaceLinter {
         errors += documentErrors;
         warnings += documentWarnings;
         infos += documentInfos;
+
+        if (fix && normalizedPlaybook.addedSections.length > 0) {
+          await this.memoryStore.writePlaybook(normalizedPlaybook.text);
+        }
 
         if (fix && normalizedMemory.addedSections.length > 0) {
           await this.memoryStore.write(targetLanguage, normalizedMemory.text);

@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "sourceLanguage": "zh-CN",
+  "targetLanguages": ["en", "ja"],
+  "ignorePatterns": ["**/node_modules/**", "**/.git/**", "**/dist/**", "**/.docplaybook/**"],
+  "concurrency": {
+    "maxConcurrentRequests": 6
+  },
+  "batch": {
+    "maxBlocksPerBatch": 8,
+    "maxCharsPerBatch": 6000
+  },
+  "layout": {
+    "kind": "vitepress"
+  },
+  "model": {
+    "kind": "gateway",
+    "model": "openai/gpt-5-mini",
+    "apiKeyEnv": "AI_GATEWAY_API_KEY"
+  }
+}

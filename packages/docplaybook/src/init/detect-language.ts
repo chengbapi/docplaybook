@@ -1,6 +1,7 @@
 import { franc } from 'franc';
 import { DEFAULT_IGNORE_PATTERNS } from '../config.js';
 import { parseMarkdownSnapshot } from '../markdown/blocks.js';
+import { SUPPORTED_MARKDOWN_EXTENSIONS } from '../markdown/files.js';
 import { LocalFolderProvider } from '../providers/local-folder-provider.js';
 
 const LANGUAGE_MAP: Record<string, string> = {
@@ -27,7 +28,9 @@ export interface DetectedLanguage {
 
 function isLikelyLocalizedVariant(relativePath: string): boolean {
   const basename = relativePath.split('/').pop() ?? relativePath;
-  return /\.[a-z]{2}(?:-[a-zA-Z]{2,4})?\.md$/i.test(basename);
+  return SUPPORTED_MARKDOWN_EXTENSIONS.some((extension) => {
+    return new RegExp(`\\.[a-z]{2}(?:-[a-zA-Z]{2,4})?\\${extension}$`, 'i').test(basename);
+  });
 }
 
 function isInternalDocplaybookPath(relativePath: string): boolean {
@@ -35,8 +38,8 @@ function isInternalDocplaybookPath(relativePath: string): boolean {
 }
 
 function preferImportantFiles(left: string, right: string): number {
-  const leftScore = left === 'README.md' ? 0 : left.split('/').length;
-  const rightScore = right === 'README.md' ? 0 : right.split('/').length;
+  const leftScore = left === 'README.md' || left === 'README.mdx' ? 0 : left.split('/').length;
+  const rightScore = right === 'README.md' || right === 'README.mdx' ? 0 : right.split('/').length;
 
   if (leftScore !== rightScore) {
     return leftScore - rightScore;

@@ -1,4 +1,4 @@
-export type LayoutKind = 'sibling' | 'docusaurus' | 'rspress';
+export type LayoutKind = 'sibling' | 'docusaurus' | 'rspress' | 'vitepress';
 
 export interface GatewayModelConfig {
   kind: 'gateway';

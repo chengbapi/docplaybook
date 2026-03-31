@@ -24,20 +24,14 @@ function createSnapshot(relativePath: string, raw: string): DocumentSnapshot {
 }
 
 test('normalizeMemoryText adds the standard lintable sections', () => {
-  const result = normalizeMemoryText('zh-CN', 'en', '# Translation Playbook: zh-CN -> en\n');
+  const result = normalizeMemoryText('en', '# Memory: en\n');
 
   assert.deepEqual(result.addedSections, [
     'Terminology',
-    'Tone & Style',
-    'Formatting & Markdown',
-    'Protected Terms',
-    'Review Notes'
+    'Style Notes'
   ]);
   assert.match(result.text, /## Terminology/);
-  assert.match(result.text, /## Tone & Style/);
-  assert.match(result.text, /## Formatting & Markdown/);
-  assert.match(result.text, /## Protected Terms/);
-  assert.match(result.text, /## Review Notes/);
+  assert.match(result.text, /## Style Notes/);
 });
 
 test('QualityLinter parses scores, findings, and block fixes from model JSON', async () => {
@@ -80,7 +74,7 @@ test('QualityLinter parses scores, findings, and block fixes from model JSON', a
     sourceLanguage: 'zh-CN',
     targetLanguage: 'en',
     docKey: 'docs/guide',
-    memoryText: '# Translation Playbook: zh-CN -> en',
+    memoryText: '# Global Playbook\n\n# en Memory',
     sourceSnapshot: createSnapshot('docs/guide.md', '使用知识库。'),
     targetSnapshot: createSnapshot('docs/guide.en.md', 'Use knowledge base.'),
     fix: true

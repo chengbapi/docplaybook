@@ -29,7 +29,25 @@ const RSPRESS_CONFIG_FILES = [
   path.join('.rspress', 'config.cjs')
 ];
 
+const VITEPRESS_CONFIG_FILES = [
+  path.join('docs', '.vitepress', 'config.ts'),
+  path.join('docs', '.vitepress', 'config.js'),
+  path.join('docs', '.vitepress', 'config.mts'),
+  path.join('docs', '.vitepress', 'config.mjs'),
+  path.join('.vitepress', 'config.ts'),
+  path.join('.vitepress', 'config.js'),
+  path.join('.vitepress', 'config.mts'),
+  path.join('.vitepress', 'config.mjs')
+];
+
 export async function detectWorkspaceLayout(workspaceRoot: string): Promise<DetectedLayout | null> {
+  if (await hasAnyPath(workspaceRoot, VITEPRESS_CONFIG_FILES)) {
+    return {
+      kind: 'vitepress',
+      reason: 'found a VitePress config file'
+    };
+  }
+
   if (await hasAnyPath(workspaceRoot, RSPRESS_CONFIG_FILES)) {
     return {
       kind: 'rspress',

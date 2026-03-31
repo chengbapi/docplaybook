@@ -39,6 +39,7 @@ export class MemoryUpdater {
   }
 
   public async updateMemory(input: {
+    scope: 'playbook' | 'memory';
     sourceLanguage: string;
     targetLanguage: string;
     memoryText: string;
@@ -53,7 +54,7 @@ export class MemoryUpdater {
 
     const prompt = buildMemoryUpdatePrompt(input);
     debugLog(
-      `memory-update ${input.targetLanguage}: corrections=${input.corrections.length}, memoryChars=${input.memoryText.length}, promptChars=${prompt.length}.`
+      `${input.scope}-update ${input.targetLanguage}: corrections=${input.corrections.length}, memoryChars=${input.memoryText.length}, promptChars=${prompt.length}.`
     );
     const result = await generateText({
       model: this.modelHandle.model,

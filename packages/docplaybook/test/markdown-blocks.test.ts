@@ -55,3 +55,40 @@ test('getChangedBlockIndexes only returns changed translatable blocks', () => {
 
   assert.deepEqual(getChangedBlockIndexes(previous, next), [1]);
 });
+
+test('parseMarkdownSnapshot keeps MDX JSX and ESM blocks non-translatable', () => {
+  const raw = [
+    "import { Callout } from './callout';",
+    '',
+    '# Title',
+    '',
+    '<Callout type="warning">',
+    'Do not translate the prop names.',
+    '</Callout>',
+    '',
+    'Translate this paragraph.',
+    '',
+    '{1 + 1}',
+    ''
+  ].join('\n');
+
+  const snapshot = parseMarkdownSnapshot('docs/guide.mdx', raw);
+
+  assert.equal(snapshot.blocks[0]?.kind, 'mdxjsEsm');
+  assert.equal(snapshot.blocks[0]?.translatable, false);
+  assert.equal(snapshot.blocks[1]?.kind, 'heading');
+  assert.equal(snapshot.blocks[1]?.translatable, true);
+  assert.equal(snapshot.blocks[2]?.kind, 'mdxJsxFlowElement');
+  assert.equal(snapshot.blocks[2]?.translatable, false);
+  assert.equal(snapshot.blocks[3]?.kind, 'paragraph');
+  assert.equal(snapshot.blocks[3]?.translatable, true);
+  assert.equal(snapshot.blocks[4]?.kind, 'mdxFlowExpression');
+  assert.equal(snapshot.blocks[4]?.translatable, false);
+
+  const rendered = renderSnapshot(
+    snapshot,
+    snapshot.blocks.map((block) => block.raw)
+  );
+
+  assert.equal(rendered, raw);
+});
