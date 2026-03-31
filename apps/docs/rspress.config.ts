@@ -62,6 +62,10 @@ export default defineConfig({
               link: '/guide/workflow'
             },
             {
+              text: 'Flow Demo',
+              link: '/guide/demo'
+            },
+            {
               text: 'CI',
               link: '/guide/ci'
             }

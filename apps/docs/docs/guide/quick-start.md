@@ -53,6 +53,8 @@ During `init`, DocPlaybook will:
 - create `.docplaybook/config.json`
 - create `.docplaybook/memories/*.md`
 
+If translated target files already exist, `init` will also suggest running `bootstrap` so the first playbook and language memories can be inferred from those existing docs.
+
 ## Provider setup
 
 DocPlaybook is AI-powered and LLM-based, so provider setup is part of initialization.
@@ -145,6 +147,16 @@ pnpm exec docplaybook .
 
 Use this when you want the normal project workflow without deciding each sub-step manually.
 
+### `docplaybook bootstrap`
+
+Build the first memory files from existing translated docs already tracked in the repo.
+
+```bash
+pnpm exec docplaybook bootstrap . --langs en,ja
+```
+
+Use this after `init` when the docs site already contains translated files.
+
 ### `docplaybook translate`
 
 Translate source docs into target languages.
@@ -171,6 +183,8 @@ pnpm exec docplaybook learn .
 ```
 
 Use this when reviewers have updated translated docs and you want DocPlaybook to reuse those corrections later.
+
+`learn` is Git-first: it compares the translated file in `HEAD` with the current working tree version, then asks the LLM which edits should become reusable guidance.
 
 You can also limit learning to selected target languages:
 

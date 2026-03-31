@@ -57,14 +57,21 @@ That combined context becomes the reusable translation standard for the current 
 
 `docplaybook learn` is the main way memory evolves.
 
-When a human edits a generated translation, the learning flow:
+When a human edits a translated document, the learning flow:
 
-1. compares the edited target file with the generated baseline
-2. decides whether the changes are reusable corrections or a major rewrite
-3. updates `playbook.md` with language-agnostic lessons
-4. updates `memories/<target>.md` with language-specific terminology and style notes
+1. compares the edited target file in Git `HEAD` with the current working tree version
+2. extracts changed translatable blocks when block shapes still align
+3. asks the LLM which edits are reusable corrections and which should be ignored
+4. updates `playbook.md` with language-agnostic lessons
+5. updates `memories/<target>.md` with language-specific terminology and style notes
 
 This lets review effort compound over time.
+
+## How bootstrap initializes memory
+
+For existing documentation sites that already have translated pages, `docplaybook bootstrap --langs ...` creates the first memory files from aligned source/target examples already in the repo.
+
+This is the recommended first step after `init` when the project already contains translated docs.
 
 ## Why the structure is minimal
 

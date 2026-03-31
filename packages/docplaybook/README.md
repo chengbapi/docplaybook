@@ -1,8 +1,8 @@
 # docplaybook
 
-`docplaybook` 是一个面向 Markdown 文档翻译的本地优先 CLI 工具。
+`docplaybook` 是一个面向 Markdown 文档翻译的 Git-first CLI 工具。
 
-它会扫描一个 workspace，将文件归并为多个文档集合，按需执行一次增量翻译同步，并从人工编辑中学习可复用的翻译经验。
+它会扫描一个 workspace，将文件归并为多个文档集合，基于 Git 跟踪源文和译文的变化，按需执行增量翻译同步，并从人工编辑中学习可复用的翻译经验。
 
 ## 安装
 
@@ -61,6 +61,12 @@ docplaybook init ./examples/sample-workspace --source zh-CN --targets en,ja
 
 ```bash
 docplaybook translate ./examples/sample-workspace
+```
+
+如果你的项目里已经有现成的译文，可以先从现有双语文档生成第一版经验库：
+
+```bash
+docplaybook bootstrap ./examples/sample-workspace --langs en,ja
 ```
 
 只整理人工修改并更新 memory：
@@ -165,9 +171,9 @@ docplaybook lint ./examples/sample-workspace --fix
 - 将 Markdown 拆成 block，只重译发生变化且可翻译的 block
 - 每个 `source -> target` 目标文章只发一次翻译请求，而不是对 block 多次调用模型
 - 保留 frontmatter、代码块、HTML block、分隔线等不可翻译内容
-- 通过更新每个语言对对应的项目级翻译 playbook，从人工修改中学习
+- 通过 Git 里的译文 before/after 变化，让 LLM 判断哪些人工修改值得沉淀进项目级翻译 playbook
 - 按 memory 对现有译文做多维度评分和问题检查，并支持 `lint --fix`
-- 将运行时状态保存在仓库之外，避免快照和 hash 污染工作区
+- 不依赖仓库外的隐式运行态状态；Git 变更和仓库内 memory 文件就是系统的唯一长期依据
 
 ## Layout
 
@@ -202,6 +208,8 @@ docplaybook lint ./examples/sample-workspace --fix
 当前版本的同步策略是：
 
 - 保留 block 级逻辑，用它来判断哪些内容需要重译，以及最终如何按原位置回填
+- `translate` 直接比较源文件在 `HEAD` 中的内容和当前工作区内容，找出发生变化的 source block
+- 未变化的 source block 会尽量复用当前目标文件里对应的 block，不再依赖额外的本地 baseline
 - 但翻译调用是“按目标文章”进行的：一篇 `guide.en.md` 只发一次模型请求
 - 同一篇文章里需要重译的多个 block 会被打包成一个整体 payload，一次翻译返回后再按 block id 拆回目标位置
 - 并发也只按“文章任务”计算：`concurrency.maxConcurrentRequests` 表示同时有多少篇目标文章在翻译
@@ -213,6 +221,19 @@ docplaybook lint ./examples/sample-workspace --fix
 
 默认入口 `docplaybook <workspace>` 会先执行 `learn`，再执行 `translate`。
 这样可以先吸收已有人工修正，降低同时改动源文和译文时丢失人工修改的风险。
+
+`learn` 的工作方式也已经改成 Git-first：
+
+- 只看 Git 跟踪到的目标译文文件改动
+- 读取目标文件在 `HEAD` 中的 before 和当前工作区里的 after
+- 将 before/after 解析为 block 后，提取发生变化的 translatable block
+- 把这些 block 级修订交给 LLM 判断，决定哪些规则应该写入全局 `playbook.md`，哪些应该写入语言级 memory
+
+这意味着：
+
+- 不需要仓库外的 runtime 或 baseline 目录
+- 切分支时只要 Git 状态是正确的，`learn` 和 `translate` 的判断基线就是清晰可追踪的
+- 团队协作时真正共享的状态就是仓库里的源文、译文和 memory 文件
 
 ## Lint
 
@@ -229,26 +250,21 @@ docplaybook lint ./examples/sample-workspace --fix
 
 每条问题都会尽量明确到具体目标 block；如果加上 `--fix`，会自动回写那些可以安全按 block 替换的修复建议。
 
-## 为什么运行态数据放在仓库之外
+## 为什么现在是 Git-first
 
-核心同步循环需要的不只是 Git 历史：
+新版主流程不再依赖仓库外的 runtime baseline。
 
-- 上一次处理后的源文快照
-- 上一次自动生成的译文快照
-- 当前磁盘上的译文快照
+系统只依赖两类长期数据：
 
-只有这样，agent 才能回答两个不同的问题：
+- Git 能够提供的 before / after 文件内容
+- 仓库内的 `playbook.md` 和 `memories/<lang>.md`
 
-- 相对上一次已处理基线，源文改了什么
-- 相对上一次自动生成基线，人类对译文改了什么
+这样设计有几个好处：
 
-这些基线属于运行时状态，而不是产品内容，所以它们会被存放到用户数据目录中：
-
-- macOS: `~/Library/Application Support/docplaybook/workspaces/<workspace-id>/`
-- Linux: `$XDG_STATE_HOME/docplaybook/workspaces/<workspace-id>/`
-- Windows: `%LOCALAPPDATA%/docplaybook/workspaces/<workspace-id>/`
-
-你也可以通过 `DOCPLAYBOOK_HOME` 覆盖这个根目录。
+- 变化来源是可追踪、可 review 的
+- 切分支时不容易被本地隐式状态污染
+- 团队协作时共享状态只存在于仓库里，而不是每个人机器上的私有目录
+- 产品心智模型更简单：Git 负责跟踪变化，LLM 负责判断变化的语义，memory 文件负责持久化经验
 
 ## 配置
 
@@ -354,6 +370,10 @@ DocPlaybook 会维护两层 AI 生成的翻译规则文件：
 
 - `.docplaybook/.env.local`
 - `.docplaybook/.env`
+- `.env.docplaybook.local`
+- `.env.docplaybook`
+- `.env.translator-agent.local`
+- `.env.translator-agent`
 - `.env.local`
 - `.env`
 
@@ -380,27 +400,44 @@ DocPlaybook 会维护两层 AI 生成的翻译规则文件：
 
 当人工编辑某个翻译文档时，agent 会比较：
 
-- 上一次源文快照
-- 上一次自动生成的译文快照
-- 当前译文文件
+- Git `HEAD` 中的目标译文
+- 当前工作区里的目标译文
+- 当前源文里对应的 block
 
-然后让 LLM 直接更新整份 playbook，并尽量保持它简洁、去重、适合继续进入 prompt。如果译文文件被进行了较大幅度的结构重排，agent 会给出 warning，并为了安全起见跳过经验生成。
-
-## Layout 预设
-
-第一版已经实现的 preset 是：
-
-- `sibling`：`guide.md`、`guide.en.md`、`guide.ja.md`
-
-目前只实现了 `sibling`。其它 layout 还没有实现。
+然后让 LLM 判断这些修订里哪些属于可复用规则，并把它们合并进 `playbook.md` 或 `memories/<lang>.md`。如果文件结构变化太大，当前实现会为了安全起见跳过这次 learn。
 
 ## 当前限制
 
 - 目前只实现了本地文件 workspace
-- 目前只实现了 `sibling` layout preset
 - 经验召回策略有意保持简单：每次都注入整个语言对 playbook
-- 译文发生大幅结构编辑时，只会 warning，不会产出经验更新
+- `learn` 目前只在 before/after block shape 能安全对齐时产出经验更新
+- `bootstrap` 默认会使用所有 aligned docs；当某种语言的对齐文档很多时，交互模式下会提示你是否限制本次样本量
 - Markdown block 解析是 best-effort 的，对非常复杂的文档可能仍需继续打磨
+
+## 评测
+
+仓库内置了一套轻量的手工评测包，放在 `evals/docplaybook/`。
+
+它适合做这些事：
+
+- 跟踪 `translate` / `learn` / `bootstrap` 的语义效果
+- 对同一批案例做多轮人工复评
+- 量化 prompt 或模型调整后的改进情况
+
+常用命令：
+
+```bash
+pnpm evals:review
+pnpm evals:summary
+```
+
+`evals:review` 会逐个展示案例，要求你记录：
+
+- `pass` / `mixed` / `fail`
+- `0-5` 分
+- 备注
+
+结果会保存到 `evals/docplaybook/results/*.json`，之后可以用 `evals:summary` 汇总。
 
 ## 近期方向
 

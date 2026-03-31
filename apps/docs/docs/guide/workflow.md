@@ -2,18 +2,20 @@
 
 After installation and initialization, most teams turn DocPlaybook into a repeatable project workflow.
 
+If you want a visual explanation of each model interaction, see [Flow Demo](/guide/demo).
+
 ## Recommended local loop
 
 For day-to-day work, the most useful local sequence is:
 
-1. `docplaybook translate .`
-2. `docplaybook learn .`
+1. `docplaybook learn .`
+2. `docplaybook translate .`
 3. `docplaybook lint . --fix`
 
 This works well because:
 
-- `translate` refreshes target docs from source changes
 - `learn` writes reusable project guidance into `playbook.md` and `memories/<lang>.md`
+- `translate` refreshes target docs from source changes tracked in Git
 - `lint --fix` cleans up safe translation issues before the pull request
 
 `learn` belongs in local development because it changes project guidance files that should be reviewed in code review.
@@ -28,7 +30,7 @@ Most teams add package scripts first:
     "docs:translate": "docplaybook translate .",
     "docs:learn": "docplaybook learn .",
     "docs:lint": "docplaybook lint . --fix",
-    "docs:i18n": "docplaybook translate . && docplaybook learn . && docplaybook lint . --fix"
+    "docs:i18n": "docplaybook learn . && docplaybook translate . && docplaybook lint . --fix"
   }
 }
 ```
@@ -45,8 +47,9 @@ yarn docs:i18n
 
 Common manual patterns are:
 
-- run `docplaybook translate .` when source docs changed
+- run `docplaybook bootstrap . --langs en,ja` once after `init` if the repo already has translated docs
 - run `docplaybook learn .` after reviewers have edited translations
+- run `docplaybook translate .` when source docs changed
 - run `docplaybook lint . --fix` before merge
 - run `docplaybook lint . --scope all` when you want a full workspace review instead of only changed files
 

@@ -28,8 +28,9 @@ The translation agent:
 
 The learning agent:
 
-- compares the current translated file with the generated baseline
-- decides whether the human edits are reusable corrections or a major rewrite
+- compares the translated file in Git `HEAD` with the current working tree version
+- extracts changed translatable blocks when the structure still aligns
+- lets the LLM judge whether those edits are reusable corrections
 - updates `.docplaybook/playbook.md` with language-agnostic rules
 - updates `.docplaybook/memories/<target>.md` with language-specific terminology and style notes
 

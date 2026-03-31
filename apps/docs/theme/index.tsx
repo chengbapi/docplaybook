@@ -41,15 +41,15 @@ function HomeShowcase() {
   const showcaseItems = [
     {
       title: 'Translate',
-      description: 'Translate only changed content and keep the rest stable.'
+      description: 'Git source diff + playbook + memory -> LLM -> updated target blocks.'
     },
     {
       title: 'Learn',
-      description: 'Turn review edits into reusable memory.'
+      description: 'Reviewed translation diff -> LLM -> structured playbook and memory updates.'
     },
     {
       title: 'Lint',
-      description: 'Flag translation issues with fixable findings.'
+      description: 'Target doc + playbook + memory + lint rules -> LLM -> issue list.'
     }
   ] as const;
   const [activeIndex, setActiveIndex] = useState(0);
@@ -68,10 +68,10 @@ function HomeShowcase() {
     <section className="dp-home-section">
       <div className="dp-home-section-head">
         <span className="dp-home-eyebrow">Core Workflow</span>
-        <h2 className="dp-home-section-title">Translate, learn, and lint in one steady loop.</h2>
+        <h2 className="dp-home-section-title">See what each command sends into the model and what comes back.</h2>
         <p className="dp-home-section-copy">
-          DocPlaybook keeps translation work grounded in source baselines, language memory, and lint-style
-          review so multilingual docs stay stable as they evolve.
+          DocPlaybook is Git-first. `translate`, `learn`, and `lint` are three different contracts with the
+          model, and each one should be easy to reason about.
         </p>
       </div>
 
@@ -94,96 +94,181 @@ function HomeShowcase() {
           <div className={`dp-demo${activeIndex === 0 ? ' is-active' : ''}`}>
             <div className="dp-demo-bar">
               <span>translate</span>
-              <span>README.md -&gt; README.ja.md</span>
+              <span>source diff + rules {'->'} translated target</span>
             </div>
             <div className="dp-demo-body dp-demo-body-translate">
-              <div className="dp-translate-compare">
-                <div className="dp-translate-pane">
-                  <div className="dp-translate-pane-head">Source (English)</div>
-                  <div className="dp-translate-block dp-translate-block-stable">
-                    <p># DocPlaybook overview</p>
+              <div className="dp-flow-grid">
+                <div className="dp-flow-column">
+                  <div className="dp-flow-card">
+                    <div className="dp-flow-card-head">Inputs</div>
+                    <div className="dp-flow-card-body">
+                      <div className="dp-flow-chip">Source A at Git HEAD</div>
+                      <div className="dp-flow-chip">Source A in working tree</div>
+                      <div className="dp-flow-chip">playbook.md</div>
+                      <div className="dp-flow-chip">memories/en.md</div>
+                      <div className="dp-flow-chip">Current target B</div>
+                    </div>
                   </div>
-                  <div className="dp-translate-block dp-translate-block-changed">
-                    <div className="dp-translate-label">changed</div>
-                    <p>Supports baseline-aware translation for changed blocks only.</p>
-                  </div>
-                  <div className="dp-translate-block dp-translate-block-stable">
-                    <p>Unchanged sections are kept from the existing target file.</p>
+                  <div className="dp-flow-card dp-flow-card-code">
+                    <div className="dp-flow-card-head">Example input</div>
+                    <div className="dp-flow-card-body">
+                      <div className="dp-diff-line">- 使用知识库管理文档。</div>
+                      <div className="dp-diff-line dp-diff-add">+ 使用知识库统一管理团队文档。</div>
+                      <div className="dp-flow-note">Memory rule: Translate “知识库” as “Wiki”.</div>
+                    </div>
                   </div>
                 </div>
-                <div className="dp-translate-pane">
-                  <div className="dp-translate-pane-head">Target (Japanese)</div>
-                  <div className="dp-translate-block dp-translate-block-stable">
-                    <p># DocPlaybook の概要</p>
+
+                <div className="dp-flow-llm-wrap">
+                  <div className="dp-flow-arrow">-&gt;</div>
+                  <div className="dp-flow-llm">
+                    <div className="dp-flow-llm-title">LLM</div>
+                    <p>Regenerate only the changed target blocks.</p>
                   </div>
-                  <div className="dp-translate-block dp-translate-block-add">
-                    <div className="dp-translate-label">regenerated</div>
-                    <p>変更された block のみを対象に、基線ベースで翻訳します。</p>
+                  <div className="dp-flow-arrow">-&gt;</div>
+                </div>
+
+                <div className="dp-flow-column">
+                  <div className="dp-flow-card">
+                    <div className="dp-flow-card-head">Output</div>
+                    <div className="dp-flow-card-body">
+                      <div className="dp-flow-chip dp-flow-chip-strong">Updated target language B</div>
+                      <div className="dp-flow-note">Only changed blocks are replaced.</div>
+                      <div className="dp-flow-note">Unchanged blocks remain stable.</div>
+                      <div className="dp-flow-note">Rules from playbook and memory should still be visible.</div>
+                    </div>
                   </div>
-                  <div className="dp-translate-block dp-translate-block-stable">
-                    <p>変更されていないセクションは既存の訳文をそのまま維持します。</p>
+                  <div className="dp-flow-card dp-flow-card-code">
+                    <div className="dp-flow-card-head">Expected output</div>
+                    <div className="dp-flow-card-body">
+                      <div className="dp-flow-out">Use the Wiki to manage team docs in one place.</div>
+                      <div className="dp-flow-note">The term stays Wiki, not Knowledge Base.</div>
+                    </div>
                   </div>
                 </div>
               </div>
-              <div className="dp-demo-line"><span className="dp-demo-pill">translate</span> one article request, changed blocks only</div>
+              <div className="dp-demo-line"><span className="dp-demo-pill">translate</span> source diff + playbook + memory {'->'} updated translated blocks</div>
             </div>
           </div>
 
           <div className={`dp-demo${activeIndex === 1 ? ' is-active' : ''}`}>
             <div className="dp-demo-bar">
               <span>learn</span>
-              <span>README.ja.md -&gt; memories/ja.md</span>
+              <span>review diff {'->'} structured updates</span>
             </div>
             <div className="dp-demo-body dp-demo-body-learn">
-              <div className="dp-learn-flow">
-                <div className="dp-learn-card dp-demo-line">
-                  <div className="dp-learn-label">review change</div>
-                  <div className="dp-learn-before">ワークスペースを設定します</div>
-                  <div className="dp-learn-arrow">-&gt;</div>
-                  <div className="dp-learn-after">workspace を設定します</div>
+              <div className="dp-flow-grid">
+                <div className="dp-flow-column">
+                  <div className="dp-flow-card">
+                    <div className="dp-flow-card-head">Inputs</div>
+                    <div className="dp-flow-card-body">
+                      <div className="dp-flow-chip">Target B at Git HEAD</div>
+                      <div className="dp-flow-chip">Target B in working tree</div>
+                      <div className="dp-flow-chip">Current source A</div>
+                      <div className="dp-flow-chip">playbook.md</div>
+                      <div className="dp-flow-chip">memories/en.md</div>
+                    </div>
+                  </div>
+                  <div className="dp-flow-card dp-flow-card-code">
+                    <div className="dp-flow-card-head">Example input</div>
+                    <div className="dp-flow-card-body">
+                      <div className="dp-diff-line">- Use the knowledge base to manage docs.</div>
+                      <div className="dp-diff-line dp-diff-add">+ Use the Wiki to manage docs.</div>
+                      <div className="dp-flow-note">A reviewer corrected a recurring term in the translation.</div>
+                    </div>
+                  </div>
                 </div>
-                <div className="dp-learn-memory dp-demo-line">
-                  <div className="dp-learn-label">memory patch</div>
-                  <div className="dp-learn-patch">
-                    <div className="dp-learn-path">.docplaybook/memories/ja.md</div>
-                    <div className="dp-learn-patch-line">+++ workspace -&gt; keep as workspace</div>
-                    <div className="dp-learn-patch-line">+++ keep concise technical Japanese</div>
+
+                <div className="dp-flow-llm-wrap">
+                  <div className="dp-flow-arrow">-&gt;</div>
+                  <div className="dp-flow-llm">
+                    <div className="dp-flow-llm-title">LLM</div>
+                    <p>Judge whether the edit is reusable and return structured updates.</p>
+                  </div>
+                  <div className="dp-flow-arrow">-&gt;</div>
+                </div>
+
+                <div className="dp-flow-column">
+                  <div className="dp-flow-card">
+                    <div className="dp-flow-card-head">Output</div>
+                    <div className="dp-flow-card-body">
+                      <div className="dp-flow-chip dp-flow-chip-strong">Updated playbook.md</div>
+                      <div className="dp-flow-chip dp-flow-chip-strong">Updated memories/en.md</div>
+                      <div className="dp-flow-note">If the edit is one-off, the update can be empty.</div>
+                    </div>
+                  </div>
+                  <div className="dp-flow-card dp-flow-card-code">
+                    <div className="dp-flow-card-head">Expected output</div>
+                    <div className="dp-flow-card-body">
+                      <div className="dp-flow-out">accepted_rules: Translate “知识库” as “Wiki”.</div>
+                      <div className="dp-flow-out">memory_text: ... Terminology ... Wiki ...</div>
+                    </div>
                   </div>
                 </div>
               </div>
-              <div className="dp-demo-line dp-demo-accent">append reusable language rules from this review</div>
+              <div className="dp-demo-line dp-demo-accent">target diff {'->'} LLM {'->'} structured playbook and memory updates</div>
             </div>
           </div>
 
           <div className={`dp-demo${activeIndex === 2 ? ' is-active' : ''}`}>
             <div className="dp-demo-bar">
               <span>lint</span>
-              <span>editor diagnostics</span>
+              <span>rule-aware review</span>
             </div>
             <div className="dp-demo-body dp-demo-body-lint">
-              <div className="dp-lint-editor">
-                <div className="dp-lint-line dp-demo-line">
-                  <span className="dp-lint-number">12</span>
-                  <span className="dp-lint-text">DocPlaybook supports the <span className="dp-lint-underline">AI gateway</span> mode.</span>
+              <div className="dp-flow-grid">
+                <div className="dp-flow-column">
+                  <div className="dp-flow-card">
+                    <div className="dp-flow-card-head">Inputs</div>
+                    <div className="dp-flow-card-body">
+                      <div className="dp-flow-chip">Source A</div>
+                      <div className="dp-flow-chip">Target B</div>
+                      <div className="dp-flow-chip">playbook.md</div>
+                      <div className="dp-flow-chip">memories/en.md</div>
+                      <div className="dp-flow-chip">Lint rules</div>
+                    </div>
+                  </div>
+                  <div className="dp-flow-card dp-flow-card-code">
+                    <div className="dp-flow-card-head">Example input</div>
+                    <div className="dp-flow-card-body">
+                      <div className="dp-flow-note">Memory prefers “gateway”, but the translation says “AI gateway”.</div>
+                      <div className="dp-flow-note">Tone should stay neutral and technical.</div>
+                    </div>
+                  </div>
                 </div>
-                <div className="dp-lint-line dp-demo-line">
-                  <span className="dp-lint-number">13</span>
-                  <span className="dp-lint-text">Use the same term across the whole translation.</span>
+
+                <div className="dp-flow-llm-wrap">
+                  <div className="dp-flow-arrow">-&gt;</div>
+                  <div className="dp-flow-llm">
+                    <div className="dp-flow-llm-title">LLM</div>
+                    <p>Review the translation against memory, playbook, and lint rules.</p>
+                  </div>
+                  <div className="dp-flow-arrow">-&gt;</div>
                 </div>
-                <div className="dp-lint-tooltip dp-demo-line">
-                  <span className="dp-lint-severity">warn</span>
-                  Terminology mismatch: memory prefers &quot;gateway&quot;, not &quot;AI gateway&quot;.
-                </div>
-                <div className="dp-lint-line dp-demo-line">
-                  <span className="dp-lint-number">18</span>
-                  <span className="dp-lint-text">This option is <span className="dp-lint-underline">super easy</span> to use.</span>
-                </div>
-                <div className="dp-lint-tooltip dp-demo-line">
-                  <span className="dp-lint-severity">info</span>
-                  Tone drift: prefer neutral technical wording over promotional phrasing.
+
+                <div className="dp-flow-column">
+                  <div className="dp-flow-card">
+                    <div className="dp-flow-card-head">Output</div>
+                    <div className="dp-flow-card-body dp-flow-issues">
+                      <div className="dp-flow-issue">
+                        <span className="dp-lint-severity">warn</span>
+                        Terminology mismatch: use “gateway”.
+                      </div>
+                      <div className="dp-flow-issue">
+                        <span className="dp-lint-severity">info</span>
+                        Tone drift: prefer neutral technical wording.
+                      </div>
+                    </div>
+                  </div>
+                  <div className="dp-flow-card dp-flow-card-code">
+                    <div className="dp-flow-card-head">Expected output</div>
+                    <div className="dp-flow-card-body">
+                      <div className="dp-flow-out">score + issue list + optional safe fixes</div>
+                    </div>
+                  </div>
                 </div>
               </div>
-              <div className="dp-demo-line"><span className="dp-demo-pill">summary</span> 2 issues found in this file</div>
+              <div className="dp-demo-line"><span className="dp-demo-pill">lint</span> target doc + playbook + memory + rules {'->'} issue list</div>
             </div>
           </div>
         </div>
