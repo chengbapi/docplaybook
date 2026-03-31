@@ -3,6 +3,7 @@ import { defineConfig } from 'rspress/config';
 
 export default defineConfig({
   root: '/',
+  base: '/docplaybook/',
   title: 'DocPlaybook',
   description: 'A local-first CLI for Markdown translation, memory learning, and lint-style review.',
   logoText: 'DocPlaybook',
