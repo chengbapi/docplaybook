@@ -4,12 +4,10 @@ import { defineConfig } from 'rspress/config';
 export default defineConfig({
   root: '/',
   base: '/docplaybook/',
-  markdown: {
-    mdxRs: false
-  },
   title: 'DocPlaybook',
   description: 'A local-first CLI for Markdown translation, memory learning, and lint-style review.',
   logoText: 'DocPlaybook',
+  themeDir: resolve(__dirname, 'theme'),
   globalStyles: resolve(__dirname, 'styles/theme.css'),
   themeConfig: {
     darkMode: true,
