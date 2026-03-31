@@ -4,18 +4,19 @@ import { HomeFooter, HomeHero } from '@rspress/core/theme-original';
 export * from '@rspress/core/theme-original';
 
 function FrameworkBadges() {
+  const base = '/docplaybook';
   const frameworks = [
     {
       name: 'Rspress',
-      logo: '/framework-rspress.svg'
+      logo: `${base}/framework-rspress.svg`
     },
     {
       name: 'Docusaurus',
-      logo: '/framework-docusaurus.svg'
+      logo: `${base}/framework-docusaurus.svg`
     },
     {
       name: 'VitePress',
-      logo: '/framework-vitepress.svg'
+      logo: `${base}/framework-vitepress.svg`
     }
   ] as const;
 
@@ -25,7 +26,7 @@ function FrameworkBadges() {
         <a
           key={framework.name}
           className="dp-nav-framework"
-          href="/guide/quick-start"
+          href={`${base}/guide/quick-start`}
           title={`Works with ${framework.name}`}
         >
           <img src={framework.logo} alt={framework.name} />
