@@ -1,7 +1,7 @@
 {
   "name": "docplaybook",
   "version": "0.1.0",
-  "description": "A local-first CLI for Markdown translation sync and reusable translation memory.",
+  "description": "A Git-first CLI for Markdown translation sync and reusable translation memory.",
   "type": "module",
   "bin": {
     "docplaybook": "./dist/cli.js"
@@ -24,7 +24,6 @@
     "@ai-sdk/openai": "^3.0.48",
     "@ai-sdk/openai-compatible": "^2.0.37",
     "ai": "^6.0.140",
-    "chokidar": "^5.0.0",
     "commander": "^14.0.1",
     "dotenv": "^17.3.1",
     "franc": "^6.2.0",
