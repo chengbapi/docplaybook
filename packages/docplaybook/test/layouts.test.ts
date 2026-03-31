@@ -90,50 +90,57 @@ test('docusaurus layout maps docs to i18n target files', () => {
   assert.equal(intro.targets.ja.exists, false);
 });
 
-test('rspress layout maps docs to docs/<lang> target files and ignores localized dirs as sources', () => {
+test('rspress layout maps docs/<sourceLang> to docs/<lang> target files and ignores non-source language dirs', () => {
   const adapter = createLayoutAdapter('rspress');
   const workspaceRoot = '/workspace';
   const files = [
-    'docs/guide/intro.md',
-    'docs/index.md',
     'docs/en/guide/intro.md',
+    'docs/en/index.md',
     'docs/ja/index.md'
   ];
 
   const docSets = adapter.buildDocSets(files, workspaceRoot, {
     ...baseConfig,
+    sourceLanguage: 'en',
+    targetLanguages: ['ja', 'zh-CN'],
     layout: { kind: 'rspress' }
   });
 
   assert.deepEqual(
     docSets.map((docSet) => docSet.docKey),
-    ['docs/guide/intro', 'docs/index']
+    ['docs/en/guide/intro', 'docs/en/index']
   );
 
-  const intro = docSets.find((docSet) => docSet.docKey === 'docs/guide/intro');
+  const intro = docSets.find((docSet) => docSet.docKey === 'docs/en/guide/intro');
   assert.ok(intro);
-  assert.equal(intro.targets.en.relativePath, 'docs/en/guide/intro.md');
-  assert.equal(intro.targets.en.exists, true);
+  assert.equal(intro.targets.ja.relativePath, 'docs/ja/guide/intro.md');
   assert.equal(intro.targets.ja.exists, false);
+  assert.equal(intro.targets['zh-CN'].relativePath, 'docs/zh-CN/guide/intro.md');
 });
 
 test('vitepress and rspress layouts preserve .mdx paths', () => {
-  const files = [
+  const rspressFiles = [
+    'docs/en/guide/intro.mdx',
+    'docs/ja/guide/intro.mdx'
+  ];
+  const vitepressFiles = [
     'docs/guide/intro.mdx',
     'docs/en/guide/intro.mdx'
   ];
 
-  const rspressDocSets = createLayoutAdapter('rspress').buildDocSets(files, '/workspace', {
+  const rspressDocSets = createLayoutAdapter('rspress').buildDocSets(rspressFiles, '/workspace', {
     ...baseConfig,
+    sourceLanguage: 'en',
+    targetLanguages: ['ja'],
     layout: { kind: 'rspress' }
   });
-  const vitepressDocSets = createLayoutAdapter('vitepress').buildDocSets(files, '/workspace', {
+  const vitepressDocSets = createLayoutAdapter('vitepress').buildDocSets(vitepressFiles, '/workspace', {
     ...baseConfig,
     layout: { kind: 'vitepress' }
   });
 
-  assert.equal(rspressDocSets[0]?.source.relativePath, 'docs/guide/intro.mdx');
-  assert.equal(rspressDocSets[0]?.targets.en.relativePath, 'docs/en/guide/intro.mdx');
+  assert.equal(rspressDocSets[0]?.source.relativePath, 'docs/en/guide/intro.mdx');
+  assert.equal(rspressDocSets[0]?.targets.ja.relativePath, 'docs/ja/guide/intro.mdx');
   assert.equal(vitepressDocSets[0]?.source.relativePath, 'docs/guide/intro.mdx');
   assert.equal(vitepressDocSets[0]?.targets.en.relativePath, 'docs/en/guide/intro.mdx');
 });

@@ -148,7 +148,8 @@ class RspressLayoutAdapter implements LayoutAdapter {
       }
 
       const docRelativePath = relativePath.slice('docs/'.length);
-      if (this.detectTargetLanguage(docRelativePath, config.targetLanguages)) {
+      const sourceDocRelativePath = this.getSourceDocRelativePath(docRelativePath, config.sourceLanguage);
+      if (!sourceDocRelativePath) {
         continue;
       }
 
@@ -163,7 +164,7 @@ class RspressLayoutAdapter implements LayoutAdapter {
 
       const targets = Object.fromEntries(
         config.targetLanguages.map((language) => {
-          const targetRelativePath = path.posix.join('docs', language, docRelativePath);
+          const targetRelativePath = path.posix.join('docs', language, sourceDocRelativePath);
           const target: DocumentRef = {
             language,
             relativePath: targetRelativePath,
@@ -186,16 +187,14 @@ class RspressLayoutAdapter implements LayoutAdapter {
     return docSets.sort((left, right) => left.docKey.localeCompare(right.docKey));
   }
 
-  private detectTargetLanguage(docRelativePath: string, targetLanguages: string[]): string | null {
-    const firstSegment = docRelativePath.split('/')[0] ?? '';
-
-    for (const language of targetLanguages) {
-      if (firstSegment === language) {
-        return language;
-      }
+  private getSourceDocRelativePath(docRelativePath: string, sourceLanguage: string): string | null {
+    const [firstSegment, ...restSegments] = docRelativePath.split('/');
+    if (firstSegment !== sourceLanguage) {
+      return null;
     }
 
-    return null;
+    const remaining = restSegments.join('/');
+    return remaining.length > 0 ? remaining : path.posix.basename(docRelativePath);
   }
 }
 
