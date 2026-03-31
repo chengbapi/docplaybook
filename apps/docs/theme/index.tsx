@@ -1,8 +1,7 @@
-export * from '@rspress/theme-default';
-
 import { useEffect, useState } from 'react';
-import defaultTheme, { HomeFooter, HomeHero } from '@rspress/theme-default';
-import { usePageData } from '@rspress/runtime';
+import { HomeFooter, HomeHero } from '@rspress/core/theme-original';
+
+export * from '@rspress/core/theme-original';
 
 function FrameworkBadges() {
   const frameworks = [
@@ -233,16 +232,12 @@ yarn exec docplaybook init .`}</code></pre>
   );
 }
 
-function CustomHomeLayout() {
-  const { page } = usePageData();
-  const routePath = typeof page.routePath === 'string' ? page.routePath : '/';
-  const frontmatter = page.frontmatter ?? {};
-
+function HomeLayout() {
   return (
     <>
       <div className="dp-home-main">
         <div className="dp-home-hero">
-          <HomeHero frontmatter={frontmatter} routePath={routePath} />
+          <HomeHero />
           <div className="dp-home-frameworks">
             <span className="dp-home-frameworks-label">Works with</span>
             <FrameworkBadges />
@@ -258,7 +253,4 @@ function CustomHomeLayout() {
   );
 }
 
-export default {
-  ...defaultTheme,
-  HomeLayout: CustomHomeLayout
-};
+export { HomeLayout };

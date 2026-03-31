@@ -1,11 +1,12 @@
 import { resolve } from 'node:path';
-import { defineConfig } from 'rspress/config';
+import { defineConfig } from '@rspress/core';
 
 export default defineConfig({
-  root: '/',
+  root: 'docs',
   base: '/docplaybook/',
+  ssg: false,
   title: 'DocPlaybook',
-  description: 'A local-first CLI for Markdown translation, memory learning, and lint-style review.',
+  description: 'A Git-first CLI for Markdown translation, memory learning, and lint-style review.',
   logoText: 'DocPlaybook',
   themeDir: resolve(__dirname, 'theme'),
   globalStyles: resolve(__dirname, 'styles/theme.css'),

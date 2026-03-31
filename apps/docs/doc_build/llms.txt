@@ -1,6 +1,6 @@
 # DocPlaybook
 
-DocPlaybook is an AI-powered CLI for translating Markdown documentation, learning reusable translation memory from human edits, and linting translated docs against that memory.
+DocPlaybook is an AI-powered, Git-first CLI for translating Markdown documentation, learning reusable translation memory from human edits, and linting translated docs against that memory.
 
 Primary documentation pages:
 
@@ -8,7 +8,7 @@ Primary documentation pages:
 - /guide/quick-start - install DocPlaybook, initialize config, choose provider, apply framework conventions, and learn the main commands
 - /guide/workflow - scripts, hooks, and CI workflow patterns
 - /guide/config - workspace config and model settings
-- /guide/advanced - translation model and baseline behavior
+- /guide/advanced - Git-first translation and learning behavior
 - /guide/agents - agent responsibilities and maintained files
 - /guide/memory - global playbook and language memory structure
 - /guide/ci - recommended CI usage for shared provider/model setup and centralized cost
@@ -17,5 +17,5 @@ Important product notes:
 
 - DocPlaybook is LLM-based and users can choose their own provider.
 - Teams often lock provider and model in config for consistent translation quality.
-- Translation is baseline-based, so only the target positions that need regeneration are replaced.
+- Translation uses Git-based source diffs, so only the target positions that need regeneration are replaced.
 - DocPlaybook maintains a global .docplaybook/playbook.md plus per-language .docplaybook/memories/<target>.md files.

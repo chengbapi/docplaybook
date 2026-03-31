@@ -22,6 +22,21 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: corepack pnpm install --frozen-lockfile
+
+      - name: Build docs
+        run: corepack pnpm --filter @docplaybook/docs build
+
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
