@@ -11,6 +11,18 @@ export default defineConfig({
       label: 'English',
       title: 'DocPlaybook',
       description: 'A CLI for Markdown translation sync, memory learning, and translation health review.'
+    },
+    {
+      lang: 'ja',
+      label: '日本語',
+      title: 'DocPlaybook',
+      description: 'Markdown 翻訳同期、メモリ学習、翻訳健全性レビューのための CLI。'
+    },
+    {
+      lang: 'zh-CN',
+      label: '简体中文',
+      title: 'DocPlaybook',
+      description: '用于 Markdown 翻译同步、记忆学习和翻译健康检查的 CLI。'
     }
   ],
   ssg: false,
