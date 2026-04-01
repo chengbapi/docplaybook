@@ -30,7 +30,21 @@ function parseTargets(value: string): string[] {
     .filter(Boolean);
 }
 
-function resolveSelectedTargetLanguages(config: { targetLanguages: string[] }, value?: string): string[] {
+function resolveSelectedTargetLanguages(
+  config: { targetLanguages: string[] },
+  values?: { langs?: string; lang?: string } | string
+): string[] {
+  const value = typeof values === 'string' ? values : values?.langs ?? values?.lang;
+  if (
+    values &&
+    typeof values !== 'string' &&
+    values.langs &&
+    values.lang &&
+    values.langs !== values.lang
+  ) {
+    throw new Error(`Conflicting language filters: --langs=${values.langs} and --lang=${values.lang}.`);
+  }
+
   if (!value) {
     return config.targetLanguages;
   }
@@ -231,19 +245,24 @@ program
 program
   .command('bootstrap')
   .argument('[workspace]', 'Workspace folder to bootstrap from existing translations', '.')
-  .requiredOption('--langs <languages>', 'Comma-separated target languages to bootstrap')
+  .option('--langs <languages>', 'Comma-separated target languages to bootstrap')
+  .option('--lang <language>', 'Single target language to bootstrap')
   .action(async (workspace, options) => {
     const workspaceRoot = path.resolve(workspace);
     await loadWorkspaceEnv(workspaceRoot);
     const config = await loadConfig(workspaceRoot);
     const agent = new WorkspaceAgent(workspaceRoot, config);
-    await agent.bootstrapOnceForLanguages(resolveSelectedTargetLanguages(config, options.langs));
+    if (!options.langs && !options.lang) {
+      throw new Error('bootstrap requires --langs <languages> or --lang <language>.');
+    }
+    await agent.bootstrapOnceForLanguages(resolveSelectedTargetLanguages(config, options));
   });
 
 program
   .command('translate')
   .argument('[workspace]', 'Workspace folder to translate', '.')
   .option('--langs <languages>', 'Comma-separated target languages to process')
+  .option('--lang <language>', 'Single target language to process')
   .option('--force', 'Ignore saved source-hash state and retranslate all matching targets', false)
   .action(async (workspace, options) => {
     const workspaceRoot = path.resolve(workspace);
@@ -251,7 +270,7 @@ program
     const config = await loadConfig(workspaceRoot);
     const agent = new WorkspaceAgent(workspaceRoot, config);
     await agent.translateOnceForLanguages(
-      resolveSelectedTargetLanguages(config, options.langs),
+      resolveSelectedTargetLanguages(config, options),
       { force: Boolean(options.force) }
     );
   });
@@ -260,13 +279,14 @@ program
   .command('retranslate')
   .argument('[workspace]', 'Workspace folder to retranslate from scratch', '.')
   .option('--langs <languages>', 'Comma-separated target languages to process')
+  .option('--lang <language>', 'Single target language to process')
   .action(async (workspace, options) => {
     const workspaceRoot = path.resolve(workspace);
     await loadWorkspaceEnv(workspaceRoot);
     const config = await loadConfig(workspaceRoot);
     const agent = new WorkspaceAgent(workspaceRoot, config);
     await agent.translateOnceForLanguages(
-      resolveSelectedTargetLanguages(config, options.langs),
+      resolveSelectedTargetLanguages(config, options),
       { force: true }
     );
   });
@@ -275,6 +295,7 @@ program
   .command('learn')
   .argument('[workspace]', 'Workspace folder to learn from current translated documents', '.')
   .option('--langs <languages>', 'Comma-separated target languages to process')
+  .option('--lang <language>', 'Single target language to process')
   .option('--force', 'Ignore saved learned-target state and relearn all matching targets', false)
   .action(async (workspace, options) => {
     const workspaceRoot = path.resolve(workspace);
@@ -282,7 +303,7 @@ program
     const config = await loadConfig(workspaceRoot);
     const agent = new WorkspaceAgent(workspaceRoot, config);
     await agent.learnOnceForLanguages(
-      resolveSelectedTargetLanguages(config, options.langs),
+      resolveSelectedTargetLanguages(config, options),
       { force: Boolean(options.force) }
     );
   });
@@ -291,13 +312,14 @@ program
   .command('relearn')
   .argument('[workspace]', 'Workspace folder to relearn from current translated documents', '.')
   .option('--langs <languages>', 'Comma-separated target languages to process')
+  .option('--lang <language>', 'Single target language to process')
   .action(async (workspace, options) => {
     const workspaceRoot = path.resolve(workspace);
     await loadWorkspaceEnv(workspaceRoot);
     const config = await loadConfig(workspaceRoot);
     const agent = new WorkspaceAgent(workspaceRoot, config);
     await agent.learnOnceForLanguages(
-      resolveSelectedTargetLanguages(config, options.langs),
+      resolveSelectedTargetLanguages(config, options),
       { force: true }
     );
   });
@@ -308,6 +330,7 @@ program
   .option('--fix', 'Automatically apply block-safe lint fixes', false)
   .option('--scope <scope>', 'Lint scope: changed or all', 'changed')
   .option('--langs <languages>', 'Comma-separated target languages to process')
+  .option('--lang <language>', 'Single target language to process')
   .action(async (workspace, options) => {
     const workspaceRoot = path.resolve(workspace);
     await loadWorkspaceEnv(workspaceRoot);
@@ -317,19 +340,20 @@ program
     await agent.lintOnceForLanguages(
       Boolean(options.fix),
       scope,
-      resolveSelectedTargetLanguages(config, options.langs)
+      resolveSelectedTargetLanguages(config, options)
     );
   });
 
 program
   .argument('[workspace]', 'Workspace folder to run the default local workflow', '.')
   .option('--langs <languages>', 'Comma-separated target languages to process')
+  .option('--lang <language>', 'Single target language to process')
   .action(async (workspace, options) => {
     const workspaceRoot = path.resolve(workspace);
     await loadWorkspaceEnv(workspaceRoot);
     const config = await loadConfig(workspaceRoot);
     const agent = new WorkspaceAgent(workspaceRoot, config);
-    await agent.autoOnceForLanguages(resolveSelectedTargetLanguages(config, options.langs));
+    await agent.autoOnceForLanguages(resolveSelectedTargetLanguages(config, options));
   });
 
 program.parseAsync(process.argv).catch((error: unknown) => {

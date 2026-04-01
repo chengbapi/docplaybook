@@ -43,7 +43,7 @@
   {
     "type": "file",
     "name": "ci-github",
-    "label": "CI 与 GitHub"
+    "label": "`CI` 与 `GitHub`"
   },
   {
     "type": "divider"
@@ -55,7 +55,7 @@
   {
     "type": "file",
     "name": "advanced",
-    "label": "运行时模型"
+    "label": "运行机制"
   },
   {
     "type": "file",
