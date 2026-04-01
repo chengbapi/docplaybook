@@ -6,6 +6,13 @@ This file stores reusable translation guidance that applies across every target 
 
 ## Voice
 
+
+
+
+
+
+
+
 - Maintain a technical, direct, and concise voice.
 - Preserve the force of warnings, imperatives, and safety guidance — translate them literally and do not soften or add promotional language.
 - Prefer neutral technical phrasing over conversational or marketing language.
@@ -25,11 +32,31 @@ This file stores reusable translation guidance that applies across every target 
 
 - Be concise and unambiguous: choose the shortest clear phrasing that preserves technical meaning and actionable steps.
 - When marking protected tokens in translated prose, render them as inline code (backticks) unless they already appear as code.
-
 ## Protected Terms
+
+
+
+
+
+
+
 
 -
 
+- Treat hyphenated internal identifiers (e.g., source-hash, health-check, memory-patch) as protected tokens: do not translate them, preserve spelling and hyphens exactly, and render them as inline code (backticks) in running prose unless they already appear formatted as code.
+
+- Preserve product/framework names and acronyms verbatim across translations: keep original capitalization and spelling (e.g., Docusaurus, Rspress, VitePress, LLM, CI, GitHub). Do not translate these names; enclose them in backticks when used as inline code or technical tokens.
+
+- Always preserve protected tokens verbatim (product/framework names, CLI commands, file paths, hyphenated identifiers, model IDs, config keys, environment variables). In running prose and headings render them as inline code (backticks) unless they already appear as code or inside a code block. Do not translate, change capitalization, or insert translations/inflections inside the token.
+
+- 所有命令、子命令、文件名、路径、配置键、模型 ID 等机器可识别的技术 token 在运行文本中必须保持原文并用反引号呈现（例如：`docplaybook learn`、`.docplaybook/state/*`）。不要对这些 token 添加目标语言标点或翻译替换。
 ## Translation Rules
+
+
+
+
+
+
+
 
 -

@@ -12,7 +12,7 @@
   "worksWithFramework": {
     "en": "Works with {framework}",
     "ja": "{framework} に対応",
-    "zh-CN": "兼容 `{framework}`"
+    "zh-CN": "兼容 {framework}"
   },
   "coreWorkflow": {
     "en": "Core Workflow",
@@ -27,7 +27,7 @@
   "coreWorkflowCopy": {
     "en": "DocPlaybook uses workspace state to decide what to process, keeps document structure safe, and reuses guidance from the global playbook and language memories.",
     "ja": "DocPlaybookはワークスペースの状態を使って処理対象を決定し、ドキュメント構造を保護し、グローバルプレイブックと言語メモリからのガイダンスを再利用します。",
-    "zh-CN": "`DocPlaybook` 使用工作区状态来决定要处理的内容，保持文档结构安全，并重用来自全局 playbook 和语言记忆的指导。"
+    "zh-CN": "DocPlaybook 使用工作区状态来决定要处理的内容，保持文档结构安全，并重用来自全局 playbook 和语言记忆的指导。"
   },
   "translateTitle": {
     "en": "Translate",
@@ -127,7 +127,7 @@
   "installTitle": {
     "en": "Add DocPlaybook to the docs project you already have.",
     "ja": "既存のドキュメントプロジェクトにDocPlaybookを追加してください。",
-    "zh-CN": "将 `DocPlaybook` 添加到您已有的文档项目中。"
+    "zh-CN": "将 DocPlaybook 添加到您已有的文档项目中。"
   },
   "installCopy": {
     "en": "Start inside your existing documentation repo, run initialization once, then translate source changes, learn from reviewer edits, and review workspace health as needed.",

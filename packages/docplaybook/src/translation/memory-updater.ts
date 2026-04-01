@@ -8,8 +8,7 @@ import type {
 } from '../types.js';
 import {
   buildBootstrapMemoryPrompt,
-  buildLearnJudgePrompt,
-  buildRuleMergePrompt
+  buildLearnJudgePrompt
 } from './prompts.js';
 import type { ModelHandle } from '../model/model-factory.js';
 import { debugLog } from '../ui.js';
@@ -60,18 +59,9 @@ export class MemoryUpdater {
       };
     }
 
-    const prompt = buildRuleMergePrompt(input);
-    debugLog(
-      `${input.scope}-merge ${input.targetLanguage}: rules=${input.rules.length}, promptChars=${prompt.length}.`
-    );
-    const result = await generateText({
-      model: this.modelHandle.model,
-      prompt
-    });
-
     return {
-      text: stripOuterMarkdownFence(result.text).trimEnd(),
-      usage: normalizeUsage(result.usage)
+      text: mergeRulesLocally(input).trimEnd(),
+      usage: zeroUsage()
     };
   }
 
@@ -188,4 +178,192 @@ function zeroUsage(): ModelUsageStats {
     outputTokens: 0,
     totalTokens: 0
   };
+}
+
+type MemoryScope = 'playbook' | 'memory';
+
+function mergeRulesLocally(input: {
+  scope: MemoryScope;
+  targetLanguage: string;
+  memoryText: string;
+  rules: string[];
+}): string {
+  const lines = input.memoryText.trimEnd().split('\n');
+  const sectionOrder = input.scope === 'playbook'
+    ? ['## Voice', '## Protected Terms', '## Translation Rules']
+    : ['## Terminology', '## Style Notes'];
+
+  const sections = new Map<string, string[]>();
+  let currentSection = '';
+  for (const line of lines) {
+    if (sectionOrder.includes(line.trim())) {
+      currentSection = line.trim();
+      if (!sections.has(currentSection)) {
+        sections.set(currentSection, []);
+      }
+      continue;
+    }
+
+    if (!currentSection) {
+      continue;
+    }
+
+    const bucket = sections.get(currentSection);
+    if (bucket) {
+      bucket.push(line);
+    }
+  }
+
+  for (const heading of sectionOrder) {
+    if (!sections.has(heading)) {
+      sections.set(heading, []);
+    }
+  }
+
+  const normalizedExisting = new Set(
+    Array.from(sections.values())
+      .flat()
+      .map((line) => normalizeRuleLine(line))
+      .filter(Boolean)
+  );
+
+  let addedCount = 0;
+  for (const rule of input.rules) {
+    const trimmed = normalizeRuleText(rule);
+    if (!trimmed) {
+      continue;
+    }
+
+    const normalized = normalizeRuleLine(`- ${trimmed}`);
+    if (normalizedExisting.has(normalized)) {
+      continue;
+    }
+
+    const heading = classifyRuleSection(input.scope, trimmed);
+    const bucket = sections.get(heading);
+    if (!bucket) {
+      continue;
+    }
+
+    if (bucket.length > 0 && bucket[bucket.length - 1] !== '') {
+      bucket.push('');
+    }
+    bucket.push(`- ${trimmed}`);
+    normalizedExisting.add(normalized);
+    addedCount += 1;
+  }
+
+  if (addedCount === 0) {
+    return input.memoryText.trimEnd();
+  }
+
+  const output: string[] = [];
+  let activeSection = '';
+  let skippingPlaceholder = false;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (sectionOrder.includes(trimmed)) {
+      if (activeSection) {
+        writeSection(output, sections.get(activeSection) ?? []);
+      }
+      output.push(line);
+      activeSection = trimmed;
+      skippingPlaceholder = true;
+      continue;
+    }
+
+    if (!activeSection) {
+      output.push(line);
+      continue;
+    }
+
+    if (skippingPlaceholder && normalizeRuleLine(line) === '-') {
+      continue;
+    }
+
+    if (skippingPlaceholder && trimmed === '') {
+      output.push(line);
+      continue;
+    }
+
+    skippingPlaceholder = false;
+  }
+
+  if (activeSection) {
+    writeSection(output, sections.get(activeSection) ?? []);
+  }
+
+  return trimExtraTrailingLines(output).join('\n');
+}
+
+function writeSection(output: string[], sectionLines: string[]): void {
+  const cleaned = trimExtraTrailingLines(sectionLines);
+  if (output.length > 0 && output[output.length - 1] !== '') {
+    output.push('');
+  }
+  output.push(...cleaned);
+}
+
+function trimExtraTrailingLines(lines: string[]): string[] {
+  const next = [...lines];
+  while (next.length > 0 && next[next.length - 1] === '') {
+    next.pop();
+  }
+  return next;
+}
+
+function normalizeRuleText(text: string): string {
+  return text.replace(/^\s*-\s*/, '').replace(/\s+/g, ' ').trim();
+}
+
+function normalizeRuleLine(line: string): string {
+  return normalizeRuleText(line).toLowerCase();
+}
+
+function classifyRuleSection(scope: MemoryScope, rule: string): string {
+  const normalized = rule.toLowerCase();
+
+  if (scope === 'memory') {
+    if (
+      normalized.includes('translate ') ||
+      normalized.includes('use ') ||
+      normalized.includes('term') ||
+      normalized.includes('terminology') ||
+      normalized.includes('keep ') ||
+      normalized.includes('render ')
+    ) {
+      return '## Terminology';
+    }
+
+    return '## Style Notes';
+  }
+
+  if (
+    normalized.includes('voice') ||
+    normalized.includes('tone') ||
+    normalized.includes('concise') ||
+    normalized.includes('promotional') ||
+    normalized.includes('marketing') ||
+    normalized.includes('neutral')
+  ) {
+    return '## Voice';
+  }
+
+  if (
+    normalized.includes('protected') ||
+    normalized.includes('verbatim') ||
+    normalized.includes('inline code') ||
+    normalized.includes('identifier') ||
+    normalized.includes('token') ||
+    normalized.includes('path') ||
+    normalized.includes('file name') ||
+    normalized.includes('filename') ||
+    normalized.includes('api') ||
+    normalized.includes('command')
+  ) {
+    return '## Protected Terms';
+  }
+
+  return '## Translation Rules';
 }
