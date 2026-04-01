@@ -1,3 +1,5 @@
+import PackageManagerTabs from '../../../theme/components/PackageManagerTabs';
+
 # Introduction
 
 ## What DocPlaybook does
@@ -33,39 +35,9 @@ If you already have a docs site, start with [Quick Start](/guide/quick-start).
 - `VitePress` follows the common localized docs layout under `docs/<locale>/...`
 - If none of those fit, `DocPlaybook` falls back to `sibling` mode for generic Markdown projects.
 
-## Typical workflow
-
-Install in your docs project, then initialize it where your docs already live.
-
-<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin:16px 0 20px;">
-  <div style="padding:14px 16px;border:1px solid #e5e7eb;border-radius:16px;">
-    <div style="font-weight:700;margin-bottom:10px;">pnpm</div>
-    <pre style="margin:0;white-space:pre-wrap;"><code>pnpm add -D docplaybook
-pnpm exec docplaybook init .</code></pre>
-  </div>
-  <div style="padding:14px 16px;border:1px solid #e5e7eb;border-radius:16px;">
-    <div style="font-weight:700;margin-bottom:10px;">npm</div>
-    <pre style="margin:0;white-space:pre-wrap;"><code>npm install --save-dev docplaybook
-npx docplaybook init .</code></pre>
-  </div>
-  <div style="padding:14px 16px;border:1px solid #e5e7eb;border-radius:16px;">
-    <div style="font-weight:700;margin-bottom:10px;">yarn</div>
-    <pre style="margin:0;white-space:pre-wrap;"><code>yarn add -D docplaybook
-yarn exec docplaybook init .</code></pre>
-  </div>
-</div>
-
-Then run the regular workflow:
-
-```bash
-pnpm exec docplaybook bootstrap . --langs en,ja
-pnpm exec docplaybook .
-pnpm exec docplaybook lint .
-```
-
 ## Where to go next
 
-- [Quick Start](/guide/quick-start) for installation, initialization, bootstrap, and command basics
-- [Project Workflow](/guide/workflow) for scripts, hooks, and CI patterns
-- [Advanced](/guide/advanced) for state-driven translation behavior and safety tradeoffs
-- [CI](/guide/ci) if you want one shared provider and one shared translation budget
+- [Quick Start](/guide/quick-start) for installation, initialization, layout detection, and bootstrap
+- [Commands](/guide/commands) for the CLI surface after `init`
+- [Translate](/guide/translate) for source-driven sync behavior
+- [Runtime Model](/guide/advanced) for runtime behavior and safety tradeoffs

@@ -6,7 +6,7 @@ This note describes the current command model for `docplaybook` from real user j
 
 - The main unit is a docs workspace, not a single file.
 - `layout.kind` decides path mapping and framework-specific file handling.
-- Incremental behavior should prefer local state over Git when possible.
+- Incremental behavior should prefer workspace state over Git reconstruction when possible.
 - Commands should map cleanly to what the user is trying to do right now:
   - connect
   - catch up
@@ -210,7 +210,7 @@ Current split:
 
 ### State reset / recovery
 
-When local state becomes confusing, users need a safe reset story.
+When state becomes confusing, users need a safe reset story.
 
 Expected options:
 

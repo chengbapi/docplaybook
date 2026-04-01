@@ -11,6 +11,8 @@ DocPlaybook maintains two levels of memory:
 
 The first is global. The second is specific to each target language.
 
+DocPlaybook also keeps `.docplaybook/state/*.json`, but those files are not memory. They only record processing progress for the current branch.
+
 ## Global playbook
 
 `.docplaybook/playbook.md` is for language-agnostic guidance.
@@ -67,6 +69,15 @@ When a human edits a translated document, the learning flow:
 
 This lets review effort compound over time.
 
+## Memory vs state
+
+Keep this split clear:
+
+- `playbook.md` and `memories/<target>.md` are project knowledge
+- `.docplaybook/state/*.json` is branch progress
+
+State files may be committed so branch switching restores progress, but their contents are operational hashes, not human-authored guidance.
+
 ## How bootstrap initializes memory
 
 For existing documentation sites that already have translated pages, `docplaybook bootstrap --langs ...` creates the first memory files from aligned source/target examples already in the repo.
@@ -90,6 +101,6 @@ This makes it easier for agents to:
 ## Related pages
 
 - [Agents](/guide/agents)
-- [Advanced](/guide/advanced)
+- [Runtime Model](/guide/advanced)
 - [Config](/guide/config)
 - [Quick Start](/guide/quick-start)

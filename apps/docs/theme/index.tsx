@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { HomeFooter, HomeHero } from '@rspress/core/theme-original';
 import { useI18n } from '@rspress/core/runtime';
+import PackageManagerTabs from './components/PackageManagerTabs';
 
 export * from '@rspress/core/theme-original';
 
@@ -189,9 +190,6 @@ function HomeShowcase() {
         </div>
       </div>
 
-      <a className="dp-showcase-link" href="/docplaybook/guide/demo">
-        {t('openFullDemo')}
-      </a>
     </section>
   );
 }
@@ -206,32 +204,7 @@ function HomeInstall() {
         <p className="dp-home-section-copy">{t('installCopy')}</p>
       </div>
 
-      <div className="dp-install-switcher">
-        <input type="radio" name="dp-pm" id="dp-pnpm" defaultChecked />
-        <input type="radio" name="dp-pm" id="dp-npm" />
-        <input type="radio" name="dp-pm" id="dp-yarn" />
-
-        <div className="dp-install-tabs">
-          <label htmlFor="dp-pnpm">pnpm</label>
-          <label htmlFor="dp-npm">npm</label>
-          <label htmlFor="dp-yarn">yarn</label>
-        </div>
-
-        <div className="dp-install-panel dp-install-panel-pnpm">
-          <pre><code>{`pnpm add -D docplaybook
-pnpm exec docplaybook init .`}</code></pre>
-        </div>
-
-        <div className="dp-install-panel dp-install-panel-npm">
-          <pre><code>{`npm install --save-dev docplaybook
-npx docplaybook init .`}</code></pre>
-        </div>
-
-        <div className="dp-install-panel dp-install-panel-yarn">
-          <pre><code>{`yarn add -D docplaybook
-yarn exec docplaybook init .`}</code></pre>
-        </div>
-      </div>
+      <PackageManagerTabs variant="init" />
     </section>
   );
 }

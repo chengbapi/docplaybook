@@ -6,3 +6,9 @@ package-lock.json
 .codex/environments/environment.toml
 .rspress
 .pnpm-store
+.docplaybook/.env
+.docplaybook/.env.local
+.env.docplaybook
+.env.docplaybook.local
+.env
+.env.local

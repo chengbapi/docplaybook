@@ -14,6 +14,11 @@
     "label": "Quick Start"
   },
   {
+    "type": "file",
+    "name": "commands",
+    "label": "Commands"
+  },
+  {
     "type": "divider"
   },
   {
@@ -22,18 +27,23 @@
   },
   {
     "type": "file",
-    "name": "workflow",
-    "label": "Project Workflow"
+    "name": "translate",
+    "label": "Translate"
   },
   {
     "type": "file",
-    "name": "demo",
-    "label": "Demo"
+    "name": "revise",
+    "label": "Revise"
   },
   {
     "type": "file",
-    "name": "ci",
-    "label": "CI"
+    "name": "local-workflow",
+    "label": "Local Workflow"
+  },
+  {
+    "type": "file",
+    "name": "ci-github",
+    "label": "CI and GitHub"
   },
   {
     "type": "divider"
@@ -45,7 +55,7 @@
   {
     "type": "file",
     "name": "advanced",
-    "label": "Advanced"
+    "label": "Runtime Model"
   },
   {
     "type": "file",

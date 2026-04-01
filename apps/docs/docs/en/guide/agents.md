@@ -72,6 +72,6 @@ This agent-based structure helps DocPlaybook stay useful over repeated runs:
 
 ## Related pages
 
-- [Quick Start](/guide/quick-start)
-- [Advanced](/guide/advanced)
+- [Commands](/guide/commands)
+- [Runtime Model](/guide/advanced)
 - [Config](/guide/config)

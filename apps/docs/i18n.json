@@ -25,7 +25,7 @@
     "zh-CN": "基于状态的翻译、可重用的记忆和工作区审查。"
   },
   "coreWorkflowCopy": {
-    "en": "DocPlaybook uses local state to decide what to process, keeps document structure safe, and reuses guidance from the global playbook and language memories.",
+    "en": "DocPlaybook uses workspace state to decide what to process, keeps document structure safe, and reuses guidance from the global playbook and language memories.",
     "ja": "DocPlaybook はローカルな状態を利用して処理対象を決定し、ドキュメント構造を保護し、グローバルプレイブックと言語メモリからのガイダンスを再利用します。",
     "zh-CN": "DocPlaybook 使用本地状态来决定处理内容，确保文档结构安全，并重用来自全局 playbook 和语言记忆的指导。"
   },
@@ -118,11 +118,6 @@
     "en": "2 issues found in this file",
     "ja": "このファイルで2件の問題が見つかりました",
     "zh-CN": "在此文件中发现 2 个问题"
-  },
-  "openFullDemo": {
-    "en": "Open the full demo page with real project cases",
-    "ja": "実際のプロジェクト事例を含む完全なデモページを開く",
-    "zh-CN": "打开包含真实项目案例的完整演示页面"
   },
   "install": {
     "en": "Install",

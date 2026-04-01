@@ -2,7 +2,7 @@
 
 `docplaybook` 是一个面向 Markdown 文档翻译的 CLI 工具。
 
-它会扫描一个 workspace，将文件归并为多个文档集合，基于本地 state 跟踪源文和译文是否需要处理，按需执行增量翻译同步，并从当前 source/target 对照中学习可复用的翻译经验。
+它会扫描一个 workspace，将文件归并为多个文档集合，基于仓库内的 state 跟踪源文和译文是否需要处理，按需执行增量翻译同步，并从当前 source/target 对照中学习可复用的翻译经验。
 
 ## 安装
 
@@ -173,7 +173,7 @@ docplaybook lint ./examples/sample-workspace --fix
 - 保留 frontmatter、代码块、HTML block、分隔线等不可翻译内容
 - 从当前 source/target 文档对中提炼可复用规则，并沉淀进项目级翻译 playbook
 - 按 memory 对现有译文做多维度评分和问题检查，并支持 `lint --fix`
-- 不依赖仓库外的复杂 baseline；`.docplaybook/state` 和仓库内 memory 文件就是系统的长期依据
+- 不依赖仓库外的复杂 baseline；`.docplaybook/state` 记录分支上的处理进度，memory 文件记录长期项目知识
 
 ## Layout
 
@@ -254,7 +254,7 @@ docplaybook lint ./examples/sample-workspace --fix
 
 ## State 驱动
 
-主流程优先使用 workspace 内的本地 state，而不是 Git before/after baseline。
+主流程优先使用 workspace 内的 tracked state，而不是 Git before/after baseline。
 
 系统只依赖两类长期数据：
 
@@ -264,8 +264,9 @@ docplaybook lint ./examples/sample-workspace --fix
 这样设计有几个好处：
 
 - 增量判断足够简单：变了就处理，没变就跳过
+- 切换分支时，处理进度也会跟着分支恢复
 - 不需要维护复杂的 Git diff 或额外快照基线
-- 本地 state 只负责“是否需要处理”，memory 文件负责持久化长期经验
+- `state` 只负责“是否需要处理”，memory 文件负责持久化长期经验
 - `lint --scope changed` 仍然可以单独保持 Git-aware，用于 CI 和 pre-push 场景
 
 ## 配置
@@ -276,6 +277,9 @@ docplaybook lint ./examples/sample-workspace --fix
 <workspace>/
   .docplaybook/
     config.json
+    state/
+      source-hashes.json
+      learned-target-hashes.json
     memories/
       en.md
       ja.md
@@ -382,8 +386,16 @@ DocPlaybook 会维护两层 AI 生成的翻译规则文件：
 推荐实践：
 
 - 将 `.docplaybook/config.json` 提交到仓库
+- 将 `.docplaybook/state/*.json` 提交到仓库，让处理进度跟随分支
 - 将密钥放在 `.docplaybook/.env.local`
 - 在自动化环境里使用 shell 环境变量或 CI secrets
+
+关于 `state` 的约定：
+
+- `state` 只表示处理进度，不表示业务知识
+- review 时默认忽略 `state` 的语义内容
+- merge conflict 以当前分支重新运行后的最新结果为准
+- 长期项目知识仍然只存放在 `playbook.md` 和 `memories/<lang>.md`
 
 ## 翻译经验库
 

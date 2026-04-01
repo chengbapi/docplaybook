@@ -1,4 +1,4 @@
-# Advanced
+# Runtime Model
 
 This page covers the state-driven execution model behind DocPlaybook: how translation stays block-aware without depending on Git before/after baselines.
 
@@ -56,16 +56,23 @@ Bootstrap does not create complex hidden baselines. It only updates the Markdown
 The current design is intentionally simple:
 
 - `.docplaybook/state/*` tracks whether a source or target version was already processed
+- those state files are branch progress, not business knowledge
 - Markdown block parsing finds structural units
 - the LLM judges semantic meaning and reusable guidance
 - memory files persist long-term project knowledge
 
 There is no Git baseline reconstruction step for `translate` or `learn`.
 
+In practice:
+
+- `state` files are allowed in Git so progress follows each branch
+- review usually ignores the meaning of hash changes
+- merge conflicts should normally be resolved by keeping the current branch result and rerunning `translate` or `learn` if needed
+
 ## Related pages
 
+- [Translate](/guide/translate)
+- [Revise](/guide/revise)
 - [Config](/guide/config)
 - [Agents](/guide/agents)
 - [Memory](/guide/memory)
-- [Project Workflow](/guide/workflow)
-- [CI](/guide/ci)

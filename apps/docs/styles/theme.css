@@ -744,7 +744,7 @@ body {
   padding: 4px 10px;
 }
 
-.dp-install-switcher {
+.dp-pm-tabs {
   background: var(--dp-surface);
   border: 1px solid var(--dp-border);
   border-radius: 24px;
@@ -753,13 +753,7 @@ body {
   overflow: hidden;
 }
 
-.dp-install-switcher input {
-  position: absolute;
-  opacity: 0;
-  pointer-events: none;
-}
-
-.dp-install-tabs {
+.dp-pm-tabs-list {
   align-items: center;
   background: var(--dp-surface-2);
   border-bottom: 1px solid var(--dp-border);
@@ -768,7 +762,8 @@ body {
   padding: 12px;
 }
 
-.dp-install-tabs label {
+.dp-pm-tab {
+  background: transparent;
   border: 1px solid transparent;
   border-radius: 999px;
   color: var(--rp-c-text-2);
@@ -779,33 +774,29 @@ body {
   transition: all 0.2s ease;
 }
 
-.dp-install-tabs label:hover {
+.dp-pm-tab:hover {
   color: var(--rp-c-text-1);
 }
 
-.dp-install-panel {
+.dp-pm-panel {
   display: none;
   padding: 0;
 }
 
-.dp-install-panel pre {
+.dp-pm-panel pre {
   background: transparent;
   margin: 0;
   padding: 22px 24px 24px;
 }
 
-#dp-pnpm:checked ~ .dp-install-tabs label[for="dp-pnpm"],
-#dp-npm:checked ~ .dp-install-tabs label[for="dp-npm"],
-#dp-yarn:checked ~ .dp-install-tabs label[for="dp-yarn"] {
+.dp-pm-tab.is-active {
   background: var(--dp-surface-strong);
   border-color: var(--dp-border);
   box-shadow: 0 6px 18px var(--dp-shadow);
   color: var(--rp-c-brand-dark);
 }
 
-#dp-pnpm:checked ~ .dp-install-panel-pnpm,
-#dp-npm:checked ~ .dp-install-panel-npm,
-#dp-yarn:checked ~ .dp-install-panel-yarn {
+.dp-pm-panel.is-active {
   display: block;
 }
 

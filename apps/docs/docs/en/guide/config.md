@@ -6,6 +6,15 @@ Project config lives in:
 <workspace>/.docplaybook/config.json
 ```
 
+The same `.docplaybook/` directory also contains:
+
+- `playbook.md`
+- `memories/<lang>.md`
+- `state/source-hashes.json`
+- `state/learned-target-hashes.json`
+
+`state/*.json` files are tracked progress files. They are intended to be committed so branch switching restores processing progress.
+
 The file is read as JSONC, so comments are allowed.
 
 ## Example
