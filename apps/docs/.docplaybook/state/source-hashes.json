@@ -9,8 +9,8 @@
   "docs/ja/guide/advanced.md": "2c56d465be1603cd1563981b713ebbfca93bde2e41c91b489cf5a569a3428962",
   "docs/zh-CN/guide/ci.md": "da469bfb3ad9b596eee4c0f049ab86bf840081355163de51325d5f2e60adcfc2",
   "docs/ja/guide/ci.md": "da469bfb3ad9b596eee4c0f049ab86bf840081355163de51325d5f2e60adcfc2",
-  "docs/zh-CN/guide/introduction.md": "c1c1799a457e0ecd078644a375800e54d833ec3e5cf6a6f5e391ccf08151b3bd",
-  "docs/ja/guide/introduction.md": "c1c1799a457e0ecd078644a375800e54d833ec3e5cf6a6f5e391ccf08151b3bd",
+  "docs/zh-CN/guide/introduction.md": "0ed25ec9ed5332f1c95af2e59074daa7ff9c7b05dd5fd46edc54a8de10ae1339",
+  "docs/ja/guide/introduction.md": "0ed25ec9ed5332f1c95af2e59074daa7ff9c7b05dd5fd46edc54a8de10ae1339",
   "docs/ja/guide/config.md": "c5c1934a8e01557ebe3d649a14b9a423fa463433891679d67ba5bd0c0a489a89",
   "docs/zh-CN/guide/config.md": "c5c1934a8e01557ebe3d649a14b9a423fa463433891679d67ba5bd0c0a489a89",
   "docs/zh-CN/index.md": "09e74ca13b266b3fd1c3b49e4fcdef88e5e10078274f5cf4f18eefd942a6ec36",
@@ -19,7 +19,7 @@
   "docs/ja/guide/workflow.md": "a0ea8757b30edef6bbef3ce0660834e798e4a19e4fa749922205babcca097893",
   "docs/zh-CN/guide/memory.md": "2e729e47b226baa723c74d471d2ff29dbbe8baf0251aec4d52d5f42f18f6357e",
   "docs/ja/guide/memory.md": "2e729e47b226baa723c74d471d2ff29dbbe8baf0251aec4d52d5f42f18f6357e",
-  "i18n.json": "a27f94473f1cb3466efed3616ab475c39ac4e0dbc7c3558eb85766fdcef36f16",
+  "i18n.json": "e031f5a77fe9c38f7bb58e5f530f9d76d43b42d682bf40e9535b1e1bcc34a0f5",
   "docs/zh-CN/guide/demo.md": "a1cd8d21f422a82e18ba96f720b44feb6e4c9b58a26c10ea80d6ddeae21b6822",
   "docs/zh-CN/guide/quick-start.md": "784950b18d50fb734d00b553a2c09c411b3c516f57a0b3f4735e32b565f61eb4",
   "docs/ja/guide/demo.md": "a1cd8d21f422a82e18ba96f720b44feb6e4c9b58a26c10ea80d6ddeae21b6822",
@@ -33,5 +33,7 @@
   "docs/ja/guide/ci-github.md": "b6fad7eda93c6c630d588f63adfe19165d11f89c988e7fc4b6cc2d0f0506c033",
   "docs/zh-CN/guide/translate.md": "64be5aa74f7cf4a03dee3d1772031734f76952a273675207544d948e179c9949",
   "docs/zh-CN/guide/revise.md": "a86ab369b4bf3642f35bcf3010742732d66ace8624759955e08e5a3006fa6280",
-  "docs/ja/guide/translate.md": "64be5aa74f7cf4a03dee3d1772031734f76952a273675207544d948e179c9949"
+  "docs/ja/guide/translate.md": "64be5aa74f7cf4a03dee3d1772031734f76952a273675207544d948e179c9949",
+  "docs/zh-CN/guide/quick-start.mdx": "62e5d2aab16c133d1e9a6a107fb7ef828a0faaf185234d1387d1dd291b44588a",
+  "docs/ja/guide/quick-start.mdx": "62e5d2aab16c133d1e9a6a107fb7ef828a0faaf185234d1387d1dd291b44588a"
 }

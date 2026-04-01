@@ -1,0 +1,134 @@
+import PackageManagerTabs from '../../../theme/components/PackageManagerTabs';
+
+# 快速开始
+
+## 在您的项目中安装
+
+如果您要将 `DocPlaybook` 集成到现有的文档项目中，通常将其作为开发依赖安装最为合适。
+
+<PackageManagerTabs variant="help" />
+
+## 初始化项目
+
+安装完成后，第一步是真正的初始化：
+
+```bash
+pnpm exec docplaybook init .
+```
+
+`DocPlaybook` 的设计使得初始化在大多数项目中基本相同。如果您的文档已经使用 `Docusaurus`、`Rspress` 或 `VitePress`，`DocPlaybook` 会检测到并在内部应用相应的路径约定。
+
+如果未检测到受支持的文档框架，则回退到 `sibling`。
+
+在运行 `init` 时，`DocPlaybook` 将会：
+
+- 尽可能检测工作区布局
+- 选择模型提供商和模型
+- 收集所需的凭证
+- 测试模型连通性
+- 检测源语言
+- 询问目标语言
+- 创建 `.docplaybook/config.json`
+- 创建 `.docplaybook/memories/*.md`
+- 创建 `.docplaybook/playbook.md`
+
+如果已存在翻译后的目标文件，`init` 还会建议运行 `bootstrap`，以便可以从这些现有文档推断出首个 `playbook` 和语言记忆。
+
+在翻译和学习运行开始后，`DocPlaybook` 还会维护 `.docplaybook/state/*.json`。这些文件用于跟踪分支进度，应该随分支一起提交。
+
+## 引导已有的翻译文档
+
+如果仓库已经包含对齐的翻译文档，请在 `init` 之后运行 `bootstrap`：
+
+```bash
+pnpm exec docplaybook bootstrap . --langs ja
+```
+
+使用 `bootstrap` 从现有翻译中推断初始项目指南：
+
+- `.docplaybook/playbook.md`
+- `.docplaybook/memories/<lang>.md`
+
+之后，常规维护使用 `translate`、`learn` 和 `lint`。
+
+## 提供者设置
+
+`DocPlaybook` 由 AI 驱动并基于大型语言模型（LLM），因此提供者设置是初始化的一部分。
+
+初始化过程中，您将：
+
+- 选择提供者
+- 选择 `model id`
+- 提供凭据
+- 运行连接性检查
+
+您可以选择适合团队的提供者。`DocPlaybook` 不要求使用特定的提供者系列。
+
+在团队工作流中，许多项目会在配置中锁定提供者和模型，以便本地运行和 CI 运行保持一致。
+
+## 布局与框架约定
+
+用户流程保持不变，但输出布局取决于 `DocPlaybook` 检测到的内容：
+
+```text
+sibling:
+guide.md
+guide.en.md
+guide.ja.md
+
+docusaurus:
+docs/guide/intro.md
+i18n/en/docusaurus-plugin-content-docs/current/guide/intro.md
+
+rspress:
+docs/en/guide/intro.md
+docs/ja/guide/intro.md
+
+vitepress:
+docs/guide/intro.md
+docs/en/guide/intro.md
+```
+
+### `Docusaurus`
+
+`DocPlaybook` 检测到 `Docusaurus` 时，会将翻译后的文档写入：
+
+```text
+i18n/<locale>/docusaurus-plugin-content-docs/current/
+```
+
+这遵循官方 `Docusaurus` 文档的 i18n 结构。
+
+### `Rspress`
+
+`DocPlaybook` 检测到 `Rspress` 时，会将翻译后的文档写入：
+
+```text
+docs/<locale>/
+```
+
+这应被理解为 `DocPlaybook` 在 `Rspress` 上的集成约定。
+
+### `VitePress`
+
+`DocPlaybook` 检测到 `VitePress` 时，会将翻译后的文档写入：
+
+```text
+docs/<locale>/
+```
+
+这遵循 VitePress 项目中常用的本地化文档布局。
+
+### Sibling
+
+如果未检测到受支持的文档框架，DocPlaybook 会回退到 `sibling`，在该模式下翻译文件与源文件并列放置：
+
+```text
+guide.md
+guide.en.md
+guide.ja.md
+```
+
+## 下一步操作
+
+继续查看 [Commands](/guide/commands)。

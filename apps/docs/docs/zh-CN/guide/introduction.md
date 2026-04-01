@@ -2,14 +2,14 @@
 
 # 介绍
 
-## DocPlaybook 的功能
+## `DocPlaybook` 的功能
 
-`DocPlaybook` 帮助文档团队使用状态驱动的工作流维护多语言 Markdown 文档，而不是不透明的 Git 风格的前/后基线。
+`DocPlaybook` 帮助文档团队使用基于状态的工作流维护多语言 Markdown 文档，而不是使用不透明的 Git 样式前后基线。
 
-- 选择您自己的 LLM 提供商和模型。
-- 使用源哈希跟踪以跳过未更改的文档并刷新过期或缺失的翻译。
-- 从审阅中学习并重用术语、语气和风格决策。
-- 通过具体的健康检查结果审查翻译，而不是模糊的模型输出。
+- 选择您自己的 `LLM` 提供商和模型。
+- 使用 `source-hash` 跟踪以跳过未更改的文档，并刷新过时或缺失的翻译。
+- 从审校中学习并重用术语、语气和风格决策。
+- 使用具体的 `health-check` 发现来审查翻译，而不是模糊的模型输出。
 
 ## 最佳支持的集成
 
@@ -30,14 +30,14 @@
   </a>
 </div>
 
-- `Docusaurus` 遵循官方文档 i18n 结构：`i18n/<locale>/docusaurus-plugin-content-docs/current/...`
+- `Docusaurus` 遵循官方文档的 i18n 结构：`i18n/<locale>/docusaurus-plugin-content-docs/current/...`
 - `Rspress` 2.x 在 `docs/` 下使用语言目录：默认语言位于 `docs/en/...`，其他语言位于 `docs/<locale>/...`
-- `VitePress` 在 `docs/<locale>/...` 下遵循常见的本地化文档布局
-- 如果上述都不适用，`DocPlaybook` 将回退到针对通用 Markdown 项目的 `sibling` 模式。
+- `VitePress` 遵循常见的本地化文档布局：`docs/<locale>/...`
+- 如果上述都不适用，`DocPlaybook` 将对通用 Markdown 项目回退到 `sibling` 模式。
 
 ## 下一步
 
-- [Quick Start](/guide/quick-start) — 用于安装、初始化、布局检测和引导
-- [Commands](/guide/commands) — 有关 `init` 之后 CLI 功能
-- [Translate](/guide/translate) — 有关基于源的同步行为
-- [Runtime Model](/guide/advanced) — 有关运行时行为和安全权衡
+- [Quick Start](/guide/quick-start) 用于安装、初始化、布局检测和引导
+- [Commands](/guide/commands) 用于 `init` 之后的 CLI 命令集
+- [Translate](/guide/translate) 关于源驱动的同步行为
+- [Runtime Model](/guide/advanced) 关于运行时行为和安全权衡

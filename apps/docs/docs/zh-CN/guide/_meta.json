@@ -65,7 +65,7 @@
   {
     "type": "file",
     "name": "agents",
-    "label": "代理"
+    "label": "智能体"
   },
   {
     "type": "file",
