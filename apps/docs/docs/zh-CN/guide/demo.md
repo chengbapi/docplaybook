@@ -1,114 +1,163 @@
-# 流程演示
+# 演示
 
-本页以具体且以 Git 为先的方式展示 DocPlaybook 的三大核心循环。
+此页面包含详细的操作演练。
 
-目的是让每次模型调用都易于理解：
+主页应快速说明产品。此页面展示了 docs 仓库中真实的 DocPlaybook 循环是如何运行的，包含具体的文件更改、命令与预期输出。
 
-- 输入内容
-- 模型应做的事
-- 应输出的内容
-
-## 翻译
-
-`translate` 以源文件为驱动。
-
-它将 Git 中的源文档与当前工作树进行比较，保持未改动的目标块不变，仅请求模型重新生成已更改的目标块。
+## 演示仓库结构
 
 ```text
-Source A (Git HEAD)
-+ Source A (working tree)
-+ playbook.md
-+ memories/<lang>.md
-+ current target B
--> LLM
--> updated target B
+docs/
+  en/
+    guide/
+      introduction.md
+  ja/
+    guide/
+      introduction.md
+.docplaybook/
+  playbook.md
+  memories/
+    ja.md
 ```
 
-具体示例：
+在此示例中：
 
-- 源之前： `使用知识库管理文档。`
-- 源之后： `使用知识库统一管理团队文档。`
-- 记忆规则： `Translate "知识库" as "Wiki".`
-- 预期目标： `Use the Wiki to manage team docs in one place.`
+- 英语为源语言
+- 日语为目标语言
+- 团队已有术语记忆库
 
-需要验证的内容：
+## 案例 1：仅翻译已更改的区块
 
-- 仅重新生成已更改的块
-- 结果中仍可见记忆和 playbook 规则
-- 代码块、链接和行内代码都被保留
+作者在 `docs/en/guide/introduction.md` 中更新了一句英文。
 
-## 学习
+修改前：
 
-`learn` 以目标差异为驱动。
+```md
+Use the knowledge base to manage docs.
+```
 
-它查看翻译文件在审校前后的内容，将该编辑与当前源文件比较，并询问模型该编辑是否应成为可复用的项目指导。
+修改后：
+
+```md
+Use the knowledge base to manage team docs in one place.
+```
+
+项目记忆已包含：
+
+```md
+- Translate "knowledge base" as "Wiki".
+```
+
+运行：
+
+```bash
+docplaybook translate docs/en/guide/introduction.md --to ja
+```
+
+DocPlaybook 发送给模型的内容：
+
+- 来自 Git 的源差异 (diff)
+- 当前的日语目标文件
+- `.docplaybook/playbook.md`
+- `.docplaybook/memories/ja.md`
+
+预期结果：
+
+```md
+Wiki を使ってチームのドキュメントを一元管理します。
+```
+
+关键点：
+
+- 未更改的日文区块保持不变
+- 术语遵循记忆库
+- 仅重新生成已更改的源区块
+
+## 案例 2：从审阅者的更正中学习
+
+审阅者手动编辑日文翻译。
+
+审阅前：
+
+```md
+ワークスペースを設定します。
+```
+
+审阅后：
+
+```md
+workspace を設定します。
+```
+
+团队希望在技术文档中保持 `workspace` 不翻译。
+
+运行：
+
+```bash
+docplaybook learn docs/ja/guide/introduction.md --from en
+```
+
+预期效果：
+
+- DocPlaybook 会检查该更正是否可复用
+- 如果可以，它会建议进行结构化的记忆库更新
+
+典型的记忆库补丁：
+
+```md
+- Keep "workspace" in English in Japanese docs.
+- Prefer concise technical Japanese over explanatory paraphrase.
+```
+
+这是审阅工作转化为未来一致性的时刻。
+
+## 案例 3：在合并前对已翻译页面进行 lint 检查
+
+现在页面已翻译，但我们希望进行一次质量检查。
+
+当前的日文文件包含：
+
+```md
+DocPlaybook は AI gateway mode をサポートします。
+この機能はとても簡単に使えます。
+```
+
+项目规则已规定：
+
+- 优先使用 `gateway`，不要使用 `AI gateway`
+- 保持语气中性且技术性
+
+运行：
+
+```bash
+docplaybook lint docs/ja/guide/introduction.md --from en
+```
+
+预期结果：
 
 ```text
-Target B (Git HEAD)
-+ Target B (working tree)
-+ current source A
-+ playbook.md
-+ memories/<lang>.md
--> LLM
--> structured updates for playbook.md and memories/<lang>.md
+warn  Terminology mismatch: use "gateway" instead of "AI gateway".
+info  Tone drift: avoid promotional wording like "very easy".
 ```
 
-具体示例：
+这在提交前或在 CI 中非常有用，因为它能在不重写整个页面的情况下发现问题。
 
-- 源块： `使用知识库管理文档。`
-- 翻译前： `Use the knowledge base to manage docs.`
-- 翻译后： `Use the Wiki to manage docs.`
-- 预期记忆更新：添加术语规则，例如 `Translate "知识库" as "Wiki".`
+## 完整流程
 
-需要验证的内容：
+一个实际的团队流程如下：
 
-- 经常出现且可复用的修正会成为记忆
-- 一次性的页面重写会被忽略
-- 结果应是结构化的更新，而非含糊的解释
+1. 编辑英文源文档。
+2. 对需要更新的目标语言运行 `translate`。
+3. 审核翻译文件。
+4. 在重要的审阅者更正上运行 `learn`。
+5. 在推送前或在 CI 中运行 `lint`。
 
-## 语法检查
+## 为什么这种划分有效
 
-`lint` 是一个规则感知的审查步骤。
+每个命令各司其职：
 
-它读取当前源文档、当前目标文档、playbook、语言记忆和 lint 规则，然后要求模型返回问题清单。
+- `translate` 使目标文档与源更改保持一致
+- `learn` 捕获可复用的审阅者知识
+- `lint` 检查当前翻译是否仍符合项目规则
 
-```text
-Source A
-+ Target B
-+ playbook.md
-+ memories/<lang>.md
-+ lint rules
--> LLM
--> score + issue list + optional safe fixes
-```
-
-具体示例：
-
-- 记忆偏好使用 `gateway`
-- 当前翻译写成了 `AI gateway`
-- 预期发现：术语不一致
-
-需要验证的内容：
-
-- 发现应指向真实的翻译问题
-- lint 尊重项目语言规则
-- 建议的修复应安全且局部
-
-## 心智模型
-
-在决定运行哪个命令时，请参考下述快速地图：
-
-- `translate`
-  - 源已更改，目标应跟上
-- `learn`
-  - 发生了翻译审校，项目记忆应得到改进
-- `lint`
-  - 已存在翻译，应检查质量
-
-这就是整个循环：
-
-1. 编辑源文档
-2. 运行 `translate`
-3. 审校者改进目标文档
-4. 运行 `learn`
-5. 运行 `lint`
+正是这种划分使 DocPlaybook 在实践中易于理解，而不仅仅停留在理论上。

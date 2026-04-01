@@ -1,0 +1,27 @@
+{
+  "id": "translate_shape_mismatch_fallback",
+  "category": "translate",
+  "kind": "bad",
+  "title": "Translate should fall back safely when source shape changes",
+  "command": "docplaybook translate . --langs en",
+  "why_this_case_exists": "When source structure changes too much for clean block reuse, the command should still be understandable and safe rather than silently mixing old and new content.",
+  "setup": [
+    "The repository is a Git repo.",
+    "The source document has structural edits such as merged or split sections.",
+    "The existing target document no longer matches the new source block shape."
+  ],
+  "input": {
+    "before_shape": "heading -> paragraph -> list -> paragraph",
+    "after_shape": "heading -> paragraph -> paragraph -> list -> note block"
+  },
+  "expected": [
+    "The command still produces valid Markdown.",
+    "The fallback behavior is understandable from output or debug artifacts.",
+    "Protected terms and code are still preserved."
+  ],
+  "should_not_happen": [
+    "Old and new structure are mixed incoherently.",
+    "Markdown becomes invalid.",
+    "Large sections are silently rewritten with obvious regressions."
+  ]
+}

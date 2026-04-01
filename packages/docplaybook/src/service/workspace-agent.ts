@@ -1,26 +1,28 @@
-import type { AppConfig, DocSet, ProviderEvent } from '../types.js';
+import type { AppConfig, DocSet } from '../types.js';
 import { createLayoutAdapter } from '../layouts/index.js';
 import { LocalFolderProvider } from '../providers/local-folder-provider.js';
-import { RuntimeStore } from '../state/runtime-store.js';
 import { createModelHandle } from '../model/model-factory.js';
 import { Translator } from '../translation/translator.js';
 import { MemoryUpdater } from '../translation/memory-updater.js';
 import { QualityLinter } from '../quality/linter.js';
-import { label } from '../ui.js';
 import { DocSetProcessor } from './docset-processor.js';
 import { type LintScope, WorkspaceLinter } from './workspace-linter.js';
-import { getSupportedMarkdownExtension } from '../markdown/files.js';
+import { promptBootstrapDocLimit } from '../init/prompts.js';
+import { RequestPool } from '../concurrency/request-pool.js';
+import {
+  DEFAULT_MAX_CONCURRENT_REQUESTS,
+  MAX_MAX_CONCURRENT_REQUESTS
+} from '../config.js';
+
+const BOOTSTRAP_PROMPT_THRESHOLD = 50;
 
 export class WorkspaceAgent {
   private readonly provider: LocalFolderProvider;
-  private readonly runtimeStore: RuntimeStore;
   private readonly processor: DocSetProcessor;
   private readonly workspaceLinter: WorkspaceLinter;
   private readonly layoutAdapter;
   private readonly managedWrites = new Set<string>();
-  private readonly scheduled = new Map<string, NodeJS.Timeout>();
   private docSets: DocSet[] = [];
-  private docSetByPath = new Map<string, DocSet>();
 
   public constructor(
     private readonly workspaceRoot: string,
@@ -28,13 +30,11 @@ export class WorkspaceAgent {
   ) {
     this.layoutAdapter = createLayoutAdapter(config.layout.kind);
     this.provider = new LocalFolderProvider(workspaceRoot, config.ignorePatterns ?? []);
-    this.runtimeStore = new RuntimeStore(workspaceRoot);
     const modelHandle = createModelHandle(config.model);
     this.processor = new DocSetProcessor(
       workspaceRoot,
       config,
       this.provider,
-      this.runtimeStore,
       new Translator(modelHandle),
       new MemoryUpdater(modelHandle),
       this.managedWrites
@@ -55,20 +55,35 @@ export class WorkspaceAgent {
     await this.translateOnceForLanguages(this.config.targetLanguages);
   }
 
-  public async translateOnceForLanguages(targetLanguages: string[]): Promise<void> {
+  public async translateOnceForLanguages(targetLanguages: string[], options: { force?: boolean } = {}): Promise<void> {
     await this.refreshDocSets();
-    for (const docSet of this.docSets) {
-      await this.processor.translateDocSet(docSet, 'startup', targetLanguages);
-    }
+    const maxConcurrentRequests = readPositiveIntEnv('DOCPLAYBOOK_MAX_CONCURRENT_REQUESTS')
+      ?? this.config.concurrency?.maxConcurrentRequests
+      ?? DEFAULT_MAX_CONCURRENT_REQUESTS;
+    const requestPool = new RequestPool(
+      MAX_MAX_CONCURRENT_REQUESTS,
+      maxConcurrentRequests
+    );
+    const pathLocks = new Map<string, Promise<void>>();
+
+    await Promise.all(
+      this.docSets.map((docSet) =>
+        this.processor.translateDocSet(docSet, 'startup', targetLanguages, {
+          ...options,
+          requestPool,
+          pathLocks
+        })
+      )
+    );
   }
 
   public async learnOnce(): Promise<void> {
     await this.learnOnceForLanguages(this.config.targetLanguages);
   }
 
-  public async learnOnceForLanguages(targetLanguages: string[]): Promise<void> {
+  public async learnOnceForLanguages(targetLanguages: string[], options: { force?: boolean } = {}): Promise<void> {
     await this.refreshDocSets();
-    await this.processor.learnWorkspace(this.docSets, targetLanguages);
+    await this.processor.learnWorkspace(this.docSets, targetLanguages, options);
   }
 
   public async autoOnce(): Promise<void> {
@@ -76,8 +91,40 @@ export class WorkspaceAgent {
   }
 
   public async autoOnceForLanguages(targetLanguages: string[]): Promise<void> {
-    await this.translateOnceForLanguages(targetLanguages);
     await this.learnOnceForLanguages(targetLanguages);
+    await this.translateOnceForLanguages(targetLanguages);
+  }
+
+  public async bootstrapOnceForLanguages(targetLanguages: string[]): Promise<void> {
+    await this.refreshDocSets();
+    const docLimits = new Map<string, number | null>();
+
+    for (const targetLanguage of targetLanguages) {
+      const alignedCount = this.docSets.filter((docSet) => docSet.targets[targetLanguage]?.exists).length;
+      if (alignedCount <= BOOTSTRAP_PROMPT_THRESHOLD) {
+        docLimits.set(targetLanguage, null);
+        continue;
+      }
+
+      docLimits.set(targetLanguage, await promptBootstrapDocLimit(targetLanguage, alignedCount));
+    }
+
+    await this.processor.bootstrapWorkspace(this.docSets, targetLanguages, docLimits);
+  }
+
+  public async detectExistingTargetLanguages(targetLanguages: string[]): Promise<string[]> {
+    await this.refreshDocSets();
+    const existing = new Set<string>();
+
+    for (const docSet of this.docSets) {
+      for (const language of targetLanguages) {
+        if (docSet.targets[language]?.exists) {
+          existing.add(language);
+        }
+      }
+    }
+
+    return [...existing];
   }
 
   public async lintOnce(fix: boolean, scope: LintScope): Promise<void> {
@@ -94,67 +141,17 @@ export class WorkspaceAgent {
   }
 
   private async refreshDocSets(): Promise<void> {
-    const files = await this.provider.scanMarkdownFiles();
+    const files = await this.provider.scanTranslatableFiles(this.config.layout.kind);
     this.docSets = this.layoutAdapter.buildDocSets(files, this.workspaceRoot, this.config);
-    this.docSetByPath = new Map();
-
-    for (const docSet of this.docSets) {
-      this.docSetByPath.set(docSet.source.relativePath, docSet);
-      for (const target of Object.values(docSet.targets)) {
-        this.docSetByPath.set(target.relativePath, docSet);
-      }
-    }
   }
+}
 
-  private async onEvent(event: ProviderEvent): Promise<void> {
-    if (this.managedWrites.has(event.relativePath)) {
-      return;
-    }
-
-    await this.refreshDocSets();
-    const docSet = this.docSetByPath.get(event.relativePath);
-
-    if (!docSet && event.kind !== 'unlink') {
-      return;
-    }
-
-    const targetDocSet = docSet ?? this.findSiblingDocSetForDeletedTarget(event.relativePath);
-    if (!targetDocSet) {
-      return;
-    }
-
-    this.scheduleDocSet(targetDocSet, `${event.kind}:${event.relativePath}`);
-  }
-
-  private scheduleDocSet(docSet: DocSet, reason: string): void {
-    const existing = this.scheduled.get(docSet.id);
-    if (existing) {
-      clearTimeout(existing);
-    }
-
-    const timer = setTimeout(() => {
-      void this.processor.translateDocSet(docSet, reason, this.config.targetLanguages).catch((error: unknown) => {
-        const message = error instanceof Error ? error.stack ?? error.message : String(error);
-        console.error(`${label('error', 'red')} Failed to process ${docSet.docKey}: ${message}`);
-      });
-      this.scheduled.delete(docSet.id);
-    }, 250);
-
-    this.scheduled.set(docSet.id, timer);
-  }
-
-  private findSiblingDocSetForDeletedTarget(relativePath: string): DocSet | undefined {
-    const extension = getSupportedMarkdownExtension(relativePath);
-    if (!extension) {
-      return undefined;
-    }
-
-    for (const docSet of this.docSets) {
-      if (Object.values(docSet.targets).some((target) => target.relativePath === relativePath)) {
-        return docSet;
-      }
-    }
-
+function readPositiveIntEnv(name: string): number | undefined {
+  const raw = process.env[name];
+  if (!raw) {
     return undefined;
   }
+
+  const value = Number(raw);
+  return Number.isInteger(value) && value > 0 ? value : undefined;
 }

@@ -72,6 +72,9 @@ export const CONFIG_DIRNAME = '.docplaybook';
 export const CONFIG_BASENAME = 'config.json';
 export const MEMORIES_DIRNAME = 'memories';
 export const PLAYBOOK_BASENAME = 'playbook.md';
+export const STATE_DIRNAME = 'state';
+export const SOURCE_HASHES_BASENAME = 'source-hashes.json';
+export const LEARNED_TARGET_HASHES_BASENAME = 'learned-target-hashes.json';
 export const DEFAULT_IGNORE_PATTERNS = [
   '**/node_modules/**',
   '**/.git/**',
@@ -97,6 +100,18 @@ export function getMemoriesDir(workspaceRoot: string): string {
 
 export function getPlaybookPath(workspaceRoot: string): string {
   return path.join(getConfigDir(workspaceRoot), PLAYBOOK_BASENAME);
+}
+
+export function getStateDir(workspaceRoot: string): string {
+  return path.join(getConfigDir(workspaceRoot), STATE_DIRNAME);
+}
+
+export function getSourceHashesPath(workspaceRoot: string): string {
+  return path.join(getStateDir(workspaceRoot), SOURCE_HASHES_BASENAME);
+}
+
+export function getLearnedTargetHashesPath(workspaceRoot: string): string {
+  return path.join(getStateDir(workspaceRoot), LEARNED_TARGET_HASHES_BASENAME);
 }
 
 function parseJsonc(raw: string): unknown {
@@ -308,7 +323,7 @@ function renderConfigJsonc(config: StoredAppConfig): string {
     '  "version": 1,',
     `  "sourceLanguage": ${JSON.stringify(config.sourceLanguage)},`,
     `  "targetLanguages": ${JSON.stringify(config.targetLanguages)},`,
-    '  // Additional ignore globs for docplaybook scanning and watch.',
+    '  // Additional ignore globs for docplaybook scanning.',
     '  // .gitignore rules are also applied by default, even if this array is empty.',
     `  "ignorePatterns": ${JSON.stringify(ignorePatterns)},`,
     '  // Shared request pool across all translation batches in a sync run.',

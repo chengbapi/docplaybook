@@ -48,6 +48,14 @@ Additional globs to ignore during scanning.
 
 Article-level concurrency. It controls how many target articles can be translated at the same time.
 
+The default is `6`. The current implementation caps the effective runtime limit at `20`, even if you set a higher value in config or an override env var.
+
+For quick experiments, you can temporarily override the config value with:
+
+```bash
+DOCPLAYBOOK_MAX_CONCURRENT_REQUESTS=12 pnpm exec docplaybook translate .
+```
+
 ### `layout.kind`
 
 Supported values:

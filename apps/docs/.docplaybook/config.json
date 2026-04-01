@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "sourceLanguage": "en",
+  "targetLanguages": ["zh-CN","ja"],
+  // Additional ignore globs for docplaybook scanning.
+  // .gitignore rules are also applied by default, even if this array is empty.
+  "ignorePatterns": ["**/node_modules/**","**/.git/**","**/dist/**","**/.docplaybook/**"],
+  // Shared request pool across all translation batches in a sync run.
+  // Increase carefully if your provider rate limits aggressively.
+  "concurrency": {
+    "maxConcurrentRequests": 20
+  },
+  "layout": {
+    "kind": "rspress"
+  },
+  "model": {
+    "kind": "openai",
+    "model": "gpt-5-mini",
+    "apiKeyEnv": "OPENAI_API_KEY",
+    "baseUrlEnv": "OPENAI_BASE_URL"
+  }
+}

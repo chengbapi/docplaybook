@@ -1,0 +1,26 @@
+{
+  "id": "learn_one_off_rewrite_should_be_ignored",
+  "category": "learn",
+  "kind": "bad",
+  "title": "Learn should ignore one-off paragraph rewrites",
+  "command": "docplaybook learn . --langs en",
+  "why_this_case_exists": "We want to stop learn from turning page-specific rewrites into global rules.",
+  "setup": [
+    "The repository is a Git repo.",
+    "The target file already exists in HEAD and is modified in the working tree.",
+    "The reviewer rewrote a paragraph for this page only, not as a reusable translation rule."
+  ],
+  "input": {
+    "source_block": "本页介绍如何初始化项目。",
+    "before_translation": "This page describes how to initialize the project.",
+    "after_translation": "This guide walks you through the initial setup for this project so your team can get started faster."
+  },
+  "expected": [
+    "The edit is ignored or explicitly marked non-reusable.",
+    "No new rule is added to playbook.md or memories/en.md from this change."
+  ],
+  "should_not_happen": [
+    "The page-specific rewrite becomes a permanent memory rule.",
+    "The tool invents a generic style rule to justify this single edit."
+  ]
+}

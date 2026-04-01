@@ -1,0 +1,27 @@
+{
+  "id": "bootstrap_existing_bilingual_docs_good",
+  "category": "bootstrap",
+  "kind": "good",
+  "title": "Bootstrap should extract useful project rules from existing bilingual docs",
+  "command": "docplaybook bootstrap . --langs en",
+  "why_this_case_exists": "This is the happy path for cold start on an existing site: good bilingual docs should become concise, useful memory.",
+  "setup": [
+    "The repository already contains aligned source and target files.",
+    "Terminology is consistent across multiple documents.",
+    "The target docs are generally high quality."
+  ],
+  "input": {
+    "observed_pattern": "知识库 is consistently translated as Wiki across multiple pages.",
+    "scope": "multiple aligned docs"
+  },
+  "expected": [
+    "playbook.md stays concise.",
+    "memories/en.md captures concrete terminology and style preferences.",
+    "The rules clearly come from repeated patterns, not a single page."
+  ],
+  "should_not_happen": [
+    "The memory stays too empty to be useful.",
+    "The tool copies page content into rules.",
+    "The output is generic filler instead of project-specific guidance."
+  ]
+}

@@ -1,60 +1,97 @@
 import { generateText } from 'ai';
 import type {
-  DocumentSnapshot,
-  ManualCorrection,
+  BootstrapExample,
+  LearnCandidate,
+  LearnJudgement,
   MemoryUpdateResult,
-  ModelUsageStats,
-  RewriteJudgementResult
+  ModelUsageStats
 } from '../types.js';
-import { buildMemoryUpdatePrompt, buildRewriteJudgePrompt } from './prompts.js';
+import {
+  buildBootstrapMemoryPrompt,
+  buildLearnJudgePrompt,
+  buildRuleMergePrompt
+} from './prompts.js';
 import type { ModelHandle } from '../model/model-factory.js';
 import { debugLog } from '../ui.js';
 
 export class MemoryUpdater {
   public constructor(private readonly modelHandle: ModelHandle) {}
 
-  public async judgeManualRewrite(input: {
+  public async judgeLearnCandidates(input: {
     sourceLanguage: string;
     targetLanguage: string;
-    generatedTargetSnapshot: DocumentSnapshot;
-    currentTargetSnapshot: DocumentSnapshot;
-  }): Promise<RewriteJudgementResult> {
-    const prompt = buildRewriteJudgePrompt(input);
+    currentPlaybook: string;
+    currentMemory: string;
+    candidates: LearnCandidate[];
+  }): Promise<{ items: LearnJudgement[]; usage: ModelUsageStats }> {
+    if (input.candidates.length === 0) {
+      return {
+        items: [],
+        usage: zeroUsage()
+      };
+    }
+
+    const prompt = buildLearnJudgePrompt(input);
     debugLog(
-      `rewrite-judge ${input.targetLanguage}: generatedBlocks=${input.generatedTargetSnapshot.blocks.length}, currentBlocks=${input.currentTargetSnapshot.blocks.length}, promptChars=${prompt.length}.`
+      `learn-judge ${input.targetLanguage}: candidates=${input.candidates.length}, promptChars=${prompt.length}.`
     );
     const result = await generateText({
       model: this.modelHandle.model,
       prompt
     });
-    const parsed = parseRewriteJudgement(result.text);
-    debugLog(
-      `rewrite-judge ${input.targetLanguage}: isMajorRewrite=${parsed.isMajorRewrite}, reason=${parsed.reason}.`
-    );
 
     return {
-      ...parsed,
+      items: parseLearnJudgements(result.text),
       usage: normalizeUsage(result.usage)
     };
   }
 
-  public async updateMemory(input: {
+  public async mergeRules(input: {
     scope: 'playbook' | 'memory';
     sourceLanguage: string;
     targetLanguage: string;
     memoryText: string;
-    corrections: ManualCorrection[];
+    rules: string[];
   }): Promise<MemoryUpdateResult> {
-    if (input.corrections.length === 0) {
+    if (input.rules.length === 0) {
       return {
         text: input.memoryText,
         usage: zeroUsage()
       };
     }
 
-    const prompt = buildMemoryUpdatePrompt(input);
+    const prompt = buildRuleMergePrompt(input);
     debugLog(
-      `${input.scope}-update ${input.targetLanguage}: corrections=${input.corrections.length}, memoryChars=${input.memoryText.length}, promptChars=${prompt.length}.`
+      `${input.scope}-merge ${input.targetLanguage}: rules=${input.rules.length}, promptChars=${prompt.length}.`
+    );
+    const result = await generateText({
+      model: this.modelHandle.model,
+      prompt
+    });
+
+    return {
+      text: stripOuterMarkdownFence(result.text).trimEnd(),
+      usage: normalizeUsage(result.usage)
+    };
+  }
+
+  public async bootstrapMemory(input: {
+    scope: 'playbook' | 'memory';
+    sourceLanguage: string;
+    targetLanguage: string;
+    memoryText: string;
+    examples: BootstrapExample[];
+  }): Promise<MemoryUpdateResult> {
+    if (input.examples.length === 0) {
+      return {
+        text: input.memoryText,
+        usage: zeroUsage()
+      };
+    }
+
+    const prompt = buildBootstrapMemoryPrompt(input);
+    debugLog(
+      `bootstrap-${input.scope} ${input.targetLanguage}: examples=${input.examples.length}, promptChars=${prompt.length}.`
     );
     const result = await generateText({
       model: this.modelHandle.model,
@@ -68,34 +105,69 @@ export class MemoryUpdater {
   }
 }
 
+function parseLearnJudgements(text: string): LearnJudgement[] {
+  const normalized = stripOuterMarkdownFence(text);
+  const match = normalized.match(/\{[\s\S]*\}/);
+  if (!match) {
+    throw new Error('Learn judgement did not return JSON.');
+  }
+
+  const parsed = JSON.parse(match[0]) as {
+    items?: Array<Record<string, unknown>>;
+  };
+
+  return (parsed.items ?? []).map((item) => ({
+    docKey: typeof item.docKey === 'string' ? item.docKey : '',
+    blockIndex: toPositiveInt(item.blockIndex),
+    shouldLearn: Boolean(item.shouldLearn),
+    scope: normalizeScope(item.scope),
+    category: normalizeCategory(item.category),
+    reason: typeof item.reason === 'string' && item.reason.trim().length > 0
+      ? item.reason.trim()
+      : 'No reason provided.',
+    proposedRule: typeof item.proposedRule === 'string' ? item.proposedRule.trim() : ''
+  }));
+}
+
+function normalizeScope(value: unknown): LearnJudgement['scope'] {
+  switch (value) {
+    case 'playbook':
+    case 'memory':
+    case 'ignore':
+      return value;
+    default:
+      return 'ignore';
+  }
+}
+
+function normalizeCategory(value: unknown): LearnJudgement['category'] {
+  switch (value) {
+    case 'terminology':
+    case 'style':
+    case 'protected_term':
+    case 'format':
+    case 'one_off':
+    case 'rewrite':
+    case 'other':
+      return value;
+    default:
+      return 'other';
+  }
+}
+
+function toPositiveInt(value: unknown): number {
+  const numeric = typeof value === 'number' ? value : Number(value);
+  return Number.isInteger(numeric) && numeric > 0 ? numeric : 0;
+}
+
 function stripOuterMarkdownFence(text: string): string {
   const normalized = text.trim();
-  const match = normalized.match(/^```(?:md|markdown)?\n([\s\S]*?)\n```$/i);
+  const match = normalized.match(/^```(?:md|markdown|json)?\n([\s\S]*?)\n```$/i);
   if (!match) {
     return normalized;
   }
 
   return match[1] ?? normalized;
-}
-
-function parseRewriteJudgement(text: string): Pick<RewriteJudgementResult, 'isMajorRewrite' | 'reason'> {
-  const normalized = stripOuterMarkdownFence(text);
-  const match = normalized.match(/\{[\s\S]*\}/);
-  if (!match) {
-    throw new Error('Rewrite judgement did not return JSON.');
-  }
-
-  const parsed = JSON.parse(match[0]) as {
-    isMajorRewrite?: unknown;
-    reason?: unknown;
-  };
-
-  return {
-    isMajorRewrite: Boolean(parsed.isMajorRewrite),
-    reason: typeof parsed.reason === 'string' && parsed.reason.trim().length > 0
-      ? parsed.reason.trim()
-      : 'No reason provided.'
-  };
 }
 
 function normalizeUsage(usage: {

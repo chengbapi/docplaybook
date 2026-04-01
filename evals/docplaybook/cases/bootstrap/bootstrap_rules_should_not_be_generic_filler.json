@@ -1,0 +1,24 @@
+{
+  "id": "bootstrap_rules_should_not_be_generic_filler",
+  "category": "bootstrap",
+  "kind": "bad",
+  "title": "Bootstrap rules should be specific, not filler",
+  "command": "docplaybook bootstrap . --langs en",
+  "why_this_case_exists": "A memory file that only says obvious things is not useful. This case checks rule quality, not just whether files were created.",
+  "setup": [
+    "Bootstrap completed successfully and wrote playbook and memory files.",
+    "Review focuses on the quality of the generated rules."
+  ],
+  "input": {
+    "bad_example": "Keep translations clear and consistent.",
+    "good_example": "Translate \"知识库\" as \"Wiki\"."
+  },
+  "expected": [
+    "Rules mention concrete terms, structures, or style choices.",
+    "The file is short but still obviously tied to this project."
+  ],
+  "should_not_happen": [
+    "The output is dominated by generic advice.",
+    "A reviewer cannot tell what project the memory belongs to."
+  ]
+}

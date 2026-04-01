@@ -3,8 +3,8 @@ pageType: home
 
 hero:
   name: DocPlaybook
-  text: Translation Ops for MD / MDX
-  tagline: Git-first translation, memory learning, and lint-style review for multilingual Markdown documentation.
+  text: MD / MDX 向けの翻訳オペレーション
+  tagline: 多言語のMarkdownドキュメント向けの、状態駆動の翻訳同期、翻訳メモリの学習、および翻訳の健全性レビュー。
   image:
     src:
       light: /logo-icon-light.svg

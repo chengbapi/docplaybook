@@ -15,11 +15,13 @@ import {
   testModelConnection
 } from './init/model-setup.js';
 import { getWorkspaceLocalEnvPath, writeWorkspaceEnvValues } from './env.js';
-import { canPrompt, confirmSourceLanguage, promptTargetLanguages } from './init/prompts.js';
+import { canPrompt, confirmSourceLanguage, promptBootstrapNow, promptTargetLanguages } from './init/prompts.js';
 import type { LayoutKind, ModelKind } from './types.js';
 import { bold, cyan, green, label, setColorEnabled, setDebugEnabled, setVerboseEnabled, yellow } from './ui.js';
 import { pathExists, unique } from './utils.js';
 import { WorkspaceAgent } from './service/workspace-agent.js';
+import { createLayoutAdapter } from './layouts/index.js';
+import { LocalFolderProvider } from './providers/local-folder-provider.js';
 
 function parseTargets(value: string): string[] {
   return value
@@ -49,7 +51,7 @@ const program = new Command();
 
 program
   .name('docplaybook')
-  .description('A local-first CLI for Markdown translation sync and reusable translation memory.')
+  .description('A CLI for Markdown translation sync, reusable translation memory, and translation health review.')
   .version('0.1.0');
 
 program.option('--no-color', 'Disable color output');
@@ -197,31 +199,107 @@ program
       console.log(`${label('hint', 'cyan')} Edit ${bold(getConfigPath(workspaceRoot))} if you want to lock them for everyone later.`);
     }
 
-    console.log(`${label('next', 'cyan')} Run ${bold(`docplaybook auto ${workspaceRoot}`)} to translate and learn once.`);
+    const bootstrapConfig = await loadConfig(workspaceRoot);
+    const layoutAdapter = createLayoutAdapter(bootstrapConfig.layout.kind);
+    const provider = new LocalFolderProvider(workspaceRoot, bootstrapConfig.ignorePatterns ?? []);
+    const docSets = layoutAdapter.buildDocSets(
+      await provider.scanTranslatableFiles(bootstrapConfig.layout.kind),
+      workspaceRoot,
+      bootstrapConfig
+    );
+    const existingTargetLanguages = mergedTargets.filter((language) =>
+      docSets.some((docSet) => docSet.targets[language]?.exists)
+    );
+
+    if (existingTargetLanguages.length > 0) {
+      console.log(
+        `${label('bootstrap', 'cyan')} Found existing translated docs for ${bold(existingTargetLanguages.join(', '))}.`
+      );
+      console.log(
+        `${label('next', 'cyan')} Run ${bold(`docplaybook bootstrap ${workspaceRoot} --langs ${existingTargetLanguages.join(',')}`)} to build the first playbook and language memories.`
+      );
+
+      if (await promptBootstrapNow(existingTargetLanguages)) {
+        const bootstrapAgent = new WorkspaceAgent(workspaceRoot, bootstrapConfig);
+        await bootstrapAgent.bootstrapOnceForLanguages(existingTargetLanguages);
+      }
+    } else {
+      console.log(`${label('next', 'cyan')} Run ${bold(`docplaybook ${workspaceRoot}`)} to learn and translate once.`);
+    }
+  });
+
+program
+  .command('bootstrap')
+  .argument('[workspace]', 'Workspace folder to bootstrap from existing translations', '.')
+  .requiredOption('--langs <languages>', 'Comma-separated target languages to bootstrap')
+  .action(async (workspace, options) => {
+    const workspaceRoot = path.resolve(workspace);
+    await loadWorkspaceEnv(workspaceRoot);
+    const config = await loadConfig(workspaceRoot);
+    const agent = new WorkspaceAgent(workspaceRoot, config);
+    await agent.bootstrapOnceForLanguages(resolveSelectedTargetLanguages(config, options.langs));
   });
 
 program
   .command('translate')
   .argument('[workspace]', 'Workspace folder to translate', '.')
   .option('--langs <languages>', 'Comma-separated target languages to process')
+  .option('--force', 'Ignore saved source-hash state and retranslate all matching targets', false)
   .action(async (workspace, options) => {
     const workspaceRoot = path.resolve(workspace);
     await loadWorkspaceEnv(workspaceRoot);
     const config = await loadConfig(workspaceRoot);
     const agent = new WorkspaceAgent(workspaceRoot, config);
-    await agent.translateOnceForLanguages(resolveSelectedTargetLanguages(config, options.langs));
+    await agent.translateOnceForLanguages(
+      resolveSelectedTargetLanguages(config, options.langs),
+      { force: Boolean(options.force) }
+    );
   });
 
 program
-  .command('learn')
-  .argument('[workspace]', 'Workspace folder to learn from edited translations', '.')
+  .command('retranslate')
+  .argument('[workspace]', 'Workspace folder to retranslate from scratch', '.')
   .option('--langs <languages>', 'Comma-separated target languages to process')
   .action(async (workspace, options) => {
     const workspaceRoot = path.resolve(workspace);
     await loadWorkspaceEnv(workspaceRoot);
     const config = await loadConfig(workspaceRoot);
     const agent = new WorkspaceAgent(workspaceRoot, config);
-    await agent.learnOnceForLanguages(resolveSelectedTargetLanguages(config, options.langs));
+    await agent.translateOnceForLanguages(
+      resolveSelectedTargetLanguages(config, options.langs),
+      { force: true }
+    );
+  });
+
+program
+  .command('learn')
+  .argument('[workspace]', 'Workspace folder to learn from current translated documents', '.')
+  .option('--langs <languages>', 'Comma-separated target languages to process')
+  .option('--force', 'Ignore saved learned-target state and relearn all matching targets', false)
+  .action(async (workspace, options) => {
+    const workspaceRoot = path.resolve(workspace);
+    await loadWorkspaceEnv(workspaceRoot);
+    const config = await loadConfig(workspaceRoot);
+    const agent = new WorkspaceAgent(workspaceRoot, config);
+    await agent.learnOnceForLanguages(
+      resolveSelectedTargetLanguages(config, options.langs),
+      { force: Boolean(options.force) }
+    );
+  });
+
+program
+  .command('relearn')
+  .argument('[workspace]', 'Workspace folder to relearn from current translated documents', '.')
+  .option('--langs <languages>', 'Comma-separated target languages to process')
+  .action(async (workspace, options) => {
+    const workspaceRoot = path.resolve(workspace);
+    await loadWorkspaceEnv(workspaceRoot);
+    const config = await loadConfig(workspaceRoot);
+    const agent = new WorkspaceAgent(workspaceRoot, config);
+    await agent.learnOnceForLanguages(
+      resolveSelectedTargetLanguages(config, options.langs),
+      { force: true }
+    );
   });
 
 program
@@ -244,7 +322,7 @@ program
   });
 
 program
-  .argument('[workspace]', 'Workspace folder to translate and then learn', '.')
+  .argument('[workspace]', 'Workspace folder to run the default local workflow', '.')
   .option('--langs <languages>', 'Comma-separated target languages to process')
   .action(async (workspace, options) => {
     const workspaceRoot = path.resolve(workspace);

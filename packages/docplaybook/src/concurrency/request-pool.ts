@@ -6,6 +6,8 @@ interface QueuedTask<T> {
   task: Task<T>;
   resolve: (value: T | PromiseLike<T>) => void;
   reject: (reason?: unknown) => void;
+  enqueuedAt: number;
+  label?: string;
 }
 
 export class RequestPool {
@@ -20,9 +22,15 @@ export class RequestPool {
     this.currentLimit = Math.max(1, Math.min(initialLimit, maxLimit));
   }
 
-  public run<T>(task: Task<T>): Promise<T> {
+  public run<T>(task: Task<T>, metadata: { label?: string } = {}): Promise<T> {
     return new Promise<T>((resolve, reject) => {
-      this.queue.push({ task, resolve, reject });
+      this.queue.push({
+        task,
+        resolve,
+        reject,
+        enqueuedAt: Date.now(),
+        label: metadata.label
+      });
       verboseLog(
         'queue',
         'cyan',
@@ -51,20 +59,23 @@ export class RequestPool {
     while (this.activeCount < this.currentLimit && this.queue.length > 0) {
       const next = this.queue.shift() as QueuedTask<any>;
       this.activeCount += 1;
+      const startedAt = Date.now();
+      const waitMs = startedAt - next.enqueuedAt;
       verboseLog(
         'queue',
         'cyan',
-        `Starting request (active: ${this.activeCount}, queued: ${this.queue.length}, limit: ${this.currentLimit}).`
+        `Starting request (active: ${this.activeCount}, queued: ${this.queue.length}, limit: ${this.currentLimit}, waited: ${waitMs}ms${next.label ? `, task: ${next.label}` : ''}).`
       );
 
       void next.task()
         .then(next.resolve, next.reject)
         .finally(() => {
           this.activeCount -= 1;
+          const elapsedMs = Date.now() - startedAt;
           verboseLog(
             'queue',
             'cyan',
-            `Finished request (active: ${this.activeCount}, queued: ${this.queue.length}, limit: ${this.currentLimit}).`
+            `Finished request (active: ${this.activeCount}, queued: ${this.queue.length}, limit: ${this.currentLimit}, taskMs: ${elapsedMs}ms${next.label ? `, task: ${next.label}` : ''}).`
           );
           this.drain();
         });

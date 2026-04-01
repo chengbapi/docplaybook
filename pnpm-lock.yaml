@@ -9,6 +9,10 @@ importers:
   .: {}
 
   apps/docs:
+    dependencies:
+      docplaybook:
+        specifier: workspace:*
+        version: link:../../packages/docplaybook
     devDependencies:
       '@rspress/core':
         specifier: ^2.0.8

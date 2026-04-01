@@ -1,0 +1,65 @@
+[
+  {
+    "type": "section-header",
+    "label": "Get Started"
+  },
+  {
+    "type": "file",
+    "name": "introduction",
+    "label": "Introduction"
+  },
+  {
+    "type": "file",
+    "name": "quick-start",
+    "label": "Quick Start"
+  },
+  {
+    "type": "divider"
+  },
+  {
+    "type": "section-header",
+    "label": "Workflow"
+  },
+  {
+    "type": "file",
+    "name": "workflow",
+    "label": "Project Workflow"
+  },
+  {
+    "type": "file",
+    "name": "demo",
+    "label": "Demo"
+  },
+  {
+    "type": "file",
+    "name": "ci",
+    "label": "CI"
+  },
+  {
+    "type": "divider"
+  },
+  {
+    "type": "section-header",
+    "label": "Advanced"
+  },
+  {
+    "type": "file",
+    "name": "advanced",
+    "label": "Advanced"
+  },
+  {
+    "type": "file",
+    "name": "config",
+    "label": "Config"
+  },
+  {
+    "type": "file",
+    "name": "agents",
+    "label": "Agents"
+  },
+  {
+    "type": "file",
+    "name": "memory",
+    "label": "Memory"
+  }
+]

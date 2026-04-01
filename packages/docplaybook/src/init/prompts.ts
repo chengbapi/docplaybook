@@ -266,3 +266,57 @@ export async function promptTargetLanguages(existingTargets: string[]): Promise<
     console.log(yellow('At least one target language is required.'));
   }
 }
+
+export async function promptBootstrapNow(languages: string[]): Promise<boolean> {
+  if (!canPrompt()) {
+    return false;
+  }
+
+  const answer = await askLine(
+    [
+      promptHeader(
+        'Bootstrap Existing Translations',
+        `Detected existing translated files for: ${languages.join(', ')}.`
+      ),
+      'Bootstrap will infer the first playbook and language memories from the existing translated docs.',
+      '',
+      `${bold('Run bootstrap now?')} [Y/n]: `
+    ].join('\n')
+  );
+
+  const normalized = answer.trim().toLowerCase();
+  return normalized === '' || normalized === 'y' || normalized === 'yes';
+}
+
+export async function promptBootstrapDocLimit(
+  targetLanguage: string,
+  totalDocs: number
+): Promise<number | null> {
+  if (!canPrompt()) {
+    return null;
+  }
+
+  const answer = await askLine(
+    [
+      promptHeader(
+        'Bootstrap Sample Size',
+        `${targetLanguage} has ${totalDocs} aligned translated document(s).`
+      ),
+      'Press Enter to use all of them, or type a smaller document limit for this bootstrap run.',
+      '',
+      `${bold('Document limit')} [all]: `
+    ].join('\n')
+  );
+
+  const normalized = answer.trim().toLowerCase();
+  if (normalized === '' || normalized === 'all') {
+    return null;
+  }
+
+  const numeric = Number(normalized);
+  if (!Number.isInteger(numeric) || numeric <= 0) {
+    throw new UserFacingError('Document limit must be a positive integer or left empty.');
+  }
+
+  return numeric;
+}

@@ -6,19 +6,23 @@ If you want a visual explanation of each model interaction, see [Flow Demo](/gui
 
 ## Recommended local loop
 
-For day-to-day work, the most useful local sequence is:
+For day-to-day work, the most useful explicit local sequence is:
 
-1. `docplaybook learn .`
-2. `docplaybook translate .`
-3. `docplaybook lint . --fix`
+1. `docplaybook translate .`
+2. `docplaybook lint . --fix`
 
 This works well because:
 
-- `learn` writes reusable project guidance into `playbook.md` and `memories/<lang>.md`
-- `translate` refreshes target docs from source changes tracked in Git
+- `translate` refreshes target docs when the source changed or a target is missing
 - `lint --fix` cleans up safe translation issues before the pull request
+- `learn` stays deliberate and can run after reviewer edits instead of on every source change
 
-`learn` belongs in local development because it changes project guidance files that should be reviewed in code review.
+When reviewers have edited translations, run `docplaybook learn .` as a separate local step. It updates `playbook.md` and `memories/<lang>.md`, so those changes should be reviewed like any other source file.
+
+The default command `docplaybook .` currently runs:
+
+1. `docplaybook learn .`
+2. `docplaybook translate .`
 
 ## Add package scripts
 
@@ -30,7 +34,7 @@ Most teams add package scripts first:
     "docs:translate": "docplaybook translate .",
     "docs:learn": "docplaybook learn .",
     "docs:lint": "docplaybook lint . --fix",
-    "docs:i18n": "docplaybook learn . && docplaybook translate . && docplaybook lint . --fix"
+      "docs:sync": "docplaybook translate . && docplaybook lint . --fix"
   }
 }
 ```
@@ -38,9 +42,9 @@ Most teams add package scripts first:
 Then run them with your package manager:
 
 ```bash
-pnpm docs:i18n
-npm run docs:i18n
-yarn docs:i18n
+pnpm docs:sync
+npm run docs:sync
+yarn docs:sync
 ```
 
 ## Manual usage

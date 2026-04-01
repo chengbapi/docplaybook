@@ -1,114 +1,163 @@
-# Flow Demo
+# Demo
 
-This page shows the three core DocPlaybook loops in a concrete, Git-first way.
+This page is where the detailed walkthrough lives.
 
-The point is to make each model call understandable:
+The homepage should explain the product quickly. This page shows what a real DocPlaybook loop looks like inside a docs repo, with concrete file changes, commands, and expected outputs.
 
-- what goes in
-- what the model should do
-- what should come back out
-
-## Translate
-
-`translate` is source-driven.
-
-It compares source docs in Git with the current working tree, keeps unchanged target blocks stable, and only asks the model to regenerate the changed target blocks.
+## Demo repo shape
 
 ```text
-Source A (Git HEAD)
-+ Source A (working tree)
-+ playbook.md
-+ memories/<lang>.md
-+ current target B
--> LLM
--> updated target B
+docs/
+  en/
+    guide/
+      introduction.md
+  ja/
+    guide/
+      introduction.md
+.docplaybook/
+  playbook.md
+  memories/
+    ja.md
 ```
 
-Concrete example:
+In this example:
 
-- source before: `使用知识库管理文档。`
-- source after: `使用知识库统一管理团队文档。`
-- memory rule: `Translate "知识库" as "Wiki".`
-- expected target: `Use the Wiki to manage team docs in one place.`
+- English is the source language
+- Japanese is the target language
+- the team already has a terminology memory
 
-What to verify:
+## Case 1: translate only the changed blocks
 
-- only changed blocks are regenerated
-- memory and playbook rules are still visible in the result
-- code fences, links, and inline code are preserved
+The writer updates one English sentence in `docs/en/guide/introduction.md`.
 
-## Learn
+Before:
 
-`learn` is target-diff-driven.
+```md
+Use the knowledge base to manage docs.
+```
 
-It looks at a translated file before and after review, compares that edit against the current source, and asks the model whether the edit should become reusable project guidance.
+After:
+
+```md
+Use the knowledge base to manage team docs in one place.
+```
+
+Project memory already contains:
+
+```md
+- Translate "knowledge base" as "Wiki".
+```
+
+Run:
+
+```bash
+docplaybook translate docs/en/guide/introduction.md --to ja
+```
+
+What DocPlaybook sends into the model:
+
+- the source diff from Git
+- the current Japanese target file
+- `.docplaybook/playbook.md`
+- `.docplaybook/memories/ja.md`
+
+Expected result:
+
+```md
+Wiki を使ってチームのドキュメントを一元管理します。
+```
+
+What matters here:
+
+- unchanged Japanese blocks stay untouched
+- terminology follows memory
+- only the changed source block is regenerated
+
+## Case 2: learn from a reviewer correction
+
+A reviewer edits the Japanese translation manually.
+
+Before review:
+
+```md
+ワークスペースを設定します。
+```
+
+After review:
+
+```md
+workspace を設定します。
+```
+
+The team wants to keep `workspace` untranslated in technical docs.
+
+Run:
+
+```bash
+docplaybook learn docs/ja/guide/introduction.md --from en
+```
+
+Expected effect:
+
+- DocPlaybook checks whether the correction is reusable
+- if yes, it proposes a structured memory update
+
+Typical memory patch:
+
+```md
+- Keep "workspace" in English in Japanese docs.
+- Prefer concise technical Japanese over explanatory paraphrase.
+```
+
+This is the moment where review work turns into future consistency.
+
+## Case 3: lint a translated page before merge
+
+Now the page is translated, but we want a quality pass.
+
+Current Japanese file contains:
+
+```md
+DocPlaybook は AI gateway mode をサポートします。
+この機能はとても簡単に使えます。
+```
+
+Project rules already say:
+
+- prefer `gateway`, not `AI gateway`
+- keep tone neutral and technical
+
+Run:
+
+```bash
+docplaybook lint docs/ja/guide/introduction.md --from en
+```
+
+Expected findings:
 
 ```text
-Target B (Git HEAD)
-+ Target B (working tree)
-+ current source A
-+ playbook.md
-+ memories/<lang>.md
--> LLM
--> structured updates for playbook.md and memories/<lang>.md
+warn  Terminology mismatch: use "gateway" instead of "AI gateway".
+info  Tone drift: avoid promotional wording like "very easy".
 ```
 
-Concrete example:
+This is useful right before commit or in CI because it catches issues without rewriting the whole page.
 
-- source block: `使用知识库管理文档。`
-- before translation: `Use the knowledge base to manage docs.`
-- after translation: `Use the Wiki to manage docs.`
-- expected memory update: add a terminology rule such as `Translate "知识库" as "Wiki".`
+## Full loop
 
-What to verify:
+One realistic team loop looks like this:
 
-- recurring, reusable fixes become memory
-- one-off page rewrites are ignored
-- the result is a structured update, not a vague explanation
+1. Edit English source docs.
+2. Run `translate` for the target languages that need updates.
+3. Review the translated files.
+4. Run `learn` on important reviewer corrections.
+5. Run `lint` before push or in CI.
 
-## Lint
+## Why this split works
 
-`lint` is a rule-aware review step.
+Each command has one job:
 
-It reads the current source, current target, playbook, language memory, and lint rules, then asks the model to return an issue list.
+- `translate` keeps target docs aligned with source changes
+- `learn` captures reusable reviewer knowledge
+- `lint` checks whether the current translation still matches project rules
 
-```text
-Source A
-+ Target B
-+ playbook.md
-+ memories/<lang>.md
-+ lint rules
--> LLM
--> score + issue list + optional safe fixes
-```
-
-Concrete example:
-
-- memory prefers `gateway`
-- current translation says `AI gateway`
-- expected finding: terminology mismatch
-
-What to verify:
-
-- findings point to real translation issues
-- lint respects project language rules
-- suggested fixes stay safe and local
-
-## Mental model
-
-Use this quick map when deciding which command to run:
-
-- `translate`
-  - source changed, target should catch up
-- `learn`
-  - translation review happened, project memory should improve
-- `lint`
-  - translation exists, quality should be checked
-
-That is the whole loop:
-
-1. edit source docs
-2. run `translate`
-3. reviewers improve target docs
-4. run `learn`
-5. run `lint`
+That separation is what makes DocPlaybook understandable in practice, not just in theory.

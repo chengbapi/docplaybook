@@ -7,6 +7,9 @@
     "build": "rspress build",
     "preview": "rspress preview"
   },
+  "dependencies": {
+    "docplaybook": "workspace:*"
+  },
   "devDependencies": {
     "@rspress/core": "^2.0.8"
   }

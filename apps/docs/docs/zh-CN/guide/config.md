@@ -6,7 +6,7 @@
 <workspace>/.docplaybook/config.json
 ```
 
-该文件以 JSONC 格式读取，因此允许注释。
+该文件以 JSONC 格式读取，因此允许使用注释。
 
 ## 示例
 
@@ -42,11 +42,19 @@
 
 ### `ignorePatterns`
 
-扫描时要忽略的额外 glob 模式。
+扫描过程中需要忽略的额外 glob 模式。
 
 ### `concurrency.maxConcurrentRequests`
 
-文章级并发。它控制可以同时翻译多少个目标文章。
+文章级并发。它控制可以同时翻译多少目标文章。
+
+默认值为 `6`。当前实现将有效运行时限制上限封顶为 `20`，即使你在配置或覆盖环境变量中设置了更高的值也如此。
+
+用于快速试验，你可以临时使用以下方式覆盖配置值：
+
+```bash
+DOCPLAYBOOK_MAX_CONCURRENT_REQUESTS=12 pnpm exec docplaybook translate .
+```
 
 ### `layout.kind`
 
@@ -61,40 +69,33 @@
 
 ### `model`
 
-用于翻译和记忆更新的模型提供商及模型 ID。
+用于翻译和记忆更新的模型提供商和模型 ID。
 
-DocPlaybook 不假定首选的 LLM 供应商。团队可以选择符合其质量、成本和策略需求的提供商。
+DocPlaybook 不假定首选的 LLM 供应商。团队可以根据其质量、成本和策略需求选择合适的提供商。
 
 在实践中，许多团队为了保持一致性，会将 `model` 保存在 `config.json` 中：
 
 - 本地开发使用相同的提供商和模型
 - CI 使用相同的提供商和模型
-- 翻译语气和术语在多次运行间保持更稳定
+- 翻译的语气和术语在多次运行中保持更稳定
 
-如果团队希望为每个用户保留自由度，则可以在 `init` 期间将模型设置保存在本地。
+如果团队希望为每个用户提供自由度，则可以在 `init` 过程中将模型设置保留为本地配置。
 
 ## 本地与 CI 的模型设置
 
-针对混合本地和 CI 使用，有两种推荐模式。
+对于混合本地与 CI 的使用场景，有两种推荐的模式。
 
-### Recommended: shared model, different secrets
+### 推荐：共享模型，不同密钥
 
-在 `config.json` 中保留提供商和模型。
-
-然后：
-
-- 本地开发者将密钥放在 `.docplaybook/.env.local`
-- CI 通过环境变量注入密钥
-
-这可使翻译和 lint 行为在不同环境之间保持稳定。
-
-### Flexible: different model in local and CI
-
-如果本地开发和 CI 需要不同的提供商或模型 ID，请将 `model` 放在 `config.json` 之外。
+将提供商和模型保存在 `config.json` 中。
 
 然后：
 
-- 本地在 `.docplaybook/.env.local` 中设置 `DOCPLAYBOOK_MODEL_*`
-- CI 在流水线中设置相同的 `DOCPLAYBOOK_MODEL_*` 变量
+- 本地开发者将机密放在 `.docplaybook/.env.local` 中
+- CI 通过环境变量注入机密
 
-这是受支持的，但通常会使本地运行与 CI 之间的翻译输出不那么一致。
+这可以保持翻译和 lint 行为在不同环境之间的稳定性。
+
+### 灵活：本地与 CI 使用不同模型
+
+如果本地开发与 CI 需要不同的提供商或模型 ID，请将 `model` 保持在 `config.json` 之外。

@@ -61,3 +61,23 @@ export function parseGitStatusPorcelainZ(raw: string): Set<string> {
 function normalizeGitPath(relativePath: string): string {
   return relativePath.replace(/\\/g, '/');
 }
+
+export async function readGitHeadFile(
+  workspaceRoot: string,
+  relativePath: string
+): Promise<string | null> {
+  try {
+    const { stdout } = await execFileAsync(
+      'git',
+      ['-C', workspaceRoot, 'show', `HEAD:${relativePath}`],
+      {
+        encoding: 'utf8',
+        maxBuffer: 1024 * 1024 * 8
+      }
+    );
+
+    return stdout;
+  } catch {
+    return null;
+  }
+}

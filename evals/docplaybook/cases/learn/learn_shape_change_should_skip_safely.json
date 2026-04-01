@@ -1,0 +1,27 @@
+{
+  "id": "learn_shape_change_should_skip_safely",
+  "category": "learn",
+  "kind": "bad",
+  "title": "Learn should skip files when block alignment is unsafe",
+  "command": "docplaybook learn . --langs en",
+  "why_this_case_exists": "Git can tell us that a file changed, but learn still needs safe block pairing. When the shape changes too much, skip is the right answer.",
+  "setup": [
+    "The repository is a Git repo.",
+    "The target file in HEAD and the working tree have materially different Markdown block structure.",
+    "Block index alignment is no longer trustworthy."
+  ],
+  "input": {
+    "before_shape": "paragraph -> list -> paragraph",
+    "after_shape": "heading -> paragraph -> paragraph -> list",
+    "risk": "Before/after blocks may refer to different content."
+  },
+  "expected": [
+    "The file is skipped for learning.",
+    "The reason is understandable from output or debug artifacts.",
+    "No new memory rule is written from this file."
+  ],
+  "should_not_happen": [
+    "The tool still learns from obviously misaligned blocks.",
+    "A resulting rule mixes unrelated content from different sections."
+  ]
+}

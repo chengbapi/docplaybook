@@ -10,24 +10,24 @@ export default defineConfig({
       lang: 'en',
       label: 'English',
       title: 'DocPlaybook',
-      description: 'A Git-first CLI for Markdown translation, memory learning, and lint-style review.'
+      description: 'A CLI for Markdown translation sync, memory learning, and translation health review.'
     },
     {
       lang: 'ja',
       label: '日本語',
       title: 'DocPlaybook',
-      description: 'Markdown ドキュメントの翻訳・メモリ学習・lint スタイルレビューのための Git-first CLI。'
+      description: 'Markdown ドキュメントの翻訳同期・メモリ学習・翻訳ヘルスレビューのための CLI。'
     },
     {
       lang: 'zh-CN',
       label: '简体中文',
       title: 'DocPlaybook',
-      description: '一个面向 Markdown 文档翻译、记忆学习和 lint 风格审查的 Git-first CLI。'
+      description: '一个面向 Markdown 文档翻译同步、记忆学习和翻译健康检查的 CLI。'
     }
   ],
   ssg: false,
   title: 'DocPlaybook',
-  description: 'A Git-first CLI for Markdown translation, memory learning, and lint-style review.',
+  description: 'A CLI for Markdown translation sync, memory learning, and translation health review.',
   logoText: 'DocPlaybook',
   themeDir: resolve(__dirname, 'theme'),
   globalStyles: resolve(__dirname, 'styles/theme.css'),
@@ -37,84 +37,12 @@ export default defineConfig({
       light: '/logo-icon-light.svg',
       dark: '/logo-icon-dark.svg'
     },
-    nav: [
-      {
-        text: 'Introduction',
-        link: '/guide/introduction'
-      },
-      {
-        text: 'Guide',
-        link: '/guide/quick-start'
-      },
-      {
-        text: 'GitHub',
-        link: 'https://github.com/chengbapi/docplaybook'
-      }
-    ],
     socialLinks: [
       {
         icon: 'github',
         mode: 'link',
         content: 'https://github.com/chengbapi/docplaybook'
       }
-    ],
-    sidebar: {
-      '/guide/': [
-        {
-          text: 'Get Started',
-          collapsed: false,
-          items: [
-            {
-              text: 'Introduction',
-              link: '/guide/introduction'
-            },
-            {
-              text: 'Quick Start',
-              link: '/guide/quick-start'
-            },
-          ]
-        },
-        {
-          text: 'Workflow',
-          collapsed: false,
-          items: [
-            {
-              text: 'Project Workflow',
-              link: '/guide/workflow'
-            },
-            {
-              text: 'Flow Demo',
-              link: '/guide/demo'
-            },
-            {
-              text: 'CI',
-              link: '/guide/ci'
-            }
-          ]
-        },
-        {
-          text: 'Advanced',
-          collapsed: false,
-          items: [
-            {
-              text: 'Advanced',
-              link: '/guide/advanced'
-            },
-            {
-              text: 'Config',
-              link: '/guide/config'
-            },
-            {
-              text: 'Agents',
-              link: '/guide/agents'
-            },
-            {
-              text: 'Memory',
-              link: '/guide/memory'
-            }
-          ]
-        }
-      ]
-    }
+    ]
   }
 });

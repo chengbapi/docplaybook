@@ -21,16 +21,17 @@ The translation agent:
 
 - reads the source document
 - reads the global playbook and the target-language memory
-- translates only the target positions that need regeneration
-- preserves the rest of the translated document as-is
+- checks whether the source hash changed for each target document
+- skips targets that are already up to date
+- refreshes the whole target document when the source changed or the target is missing
 
 ### Learn
 
 The learning agent:
 
-- compares the translated file in Git `HEAD` with the current working tree version
-- extracts changed translatable blocks when the structure still aligns
-- lets the LLM judge whether those edits are reusable corrections
+- checks whether the target hash changed since the last learn run
+- skips targets that were already learned in their current version
+- lets the LLM extract reusable guidance from the current source/target pair
 - updates `.docplaybook/playbook.md` with language-agnostic rules
 - updates `.docplaybook/memories/<target>.md` with language-specific terminology and style notes
 

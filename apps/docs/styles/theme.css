@@ -292,6 +292,19 @@ body {
   margin: 18px 0 26px;
 }
 
+.dp-showcase-link {
+  color: var(--rp-c-link);
+  display: inline-flex;
+  font-size: 0.96rem;
+  font-weight: 700;
+  text-decoration: none;
+  width: fit-content;
+}
+
+.dp-showcase-link:hover {
+  text-decoration: underline;
+}
+
 .dp-showcase-rail,
 .dp-showcase-stage {
   background: var(--dp-surface);

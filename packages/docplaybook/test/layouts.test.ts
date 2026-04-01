@@ -118,6 +118,38 @@ test('rspress layout maps docs/<sourceLang> to docs/<lang> target files and igno
   assert.equal(intro.targets['zh-CN'].relativePath, 'docs/zh-CN/guide/intro.md');
 });
 
+test('rspress layout also maps localized _nav.json and _meta.json files', () => {
+  const adapter = createLayoutAdapter('rspress');
+  const docSets = adapter.buildDocSets([
+    'i18n.json',
+    'docs/en/_nav.json',
+    'docs/en/guide/_meta.json',
+    'docs/ja/_nav.json',
+    'docs/zh-CN/guide/_meta.json'
+  ], '/workspace', {
+    ...baseConfig,
+    sourceLanguage: 'en',
+    targetLanguages: ['ja', 'zh-CN'],
+    layout: { kind: 'rspress' }
+  });
+
+  const nav = docSets.find((docSet) => docSet.source.relativePath === 'docs/en/_nav.json');
+  const meta = docSets.find((docSet) => docSet.source.relativePath === 'docs/en/guide/_meta.json');
+  const i18n = docSets.find((docSet) => docSet.source.relativePath === 'i18n.json');
+
+  assert.ok(nav);
+  assert.equal(nav.targets.ja.relativePath, 'docs/ja/_nav.json');
+  assert.equal(nav.targets.ja.exists, true);
+
+  assert.ok(meta);
+  assert.equal(meta.targets['zh-CN'].relativePath, 'docs/zh-CN/guide/_meta.json');
+  assert.equal(meta.targets['zh-CN'].exists, true);
+
+  assert.ok(i18n);
+  assert.equal(i18n.targets.ja.relativePath, 'i18n.json');
+  assert.equal(i18n.targets['zh-CN'].relativePath, 'i18n.json');
+});
+
 test('vitepress and rspress layouts preserve .mdx paths', () => {
   const rspressFiles = [
     'docs/en/guide/intro.mdx',

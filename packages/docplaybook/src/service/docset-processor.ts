@@ -1,326 +1,513 @@
 import type {
   AppConfig,
+  BootstrapExample,
   DocSet,
-  DocSetRuntimeState,
-  DocumentSnapshot,
-  ManualCorrection,
+  LearnCandidate,
+  LearnJudgement,
   ModelUsageStats
 } from '../types.js';
-import { parseMarkdownSnapshot, getChangedBlockIndexes, renderSnapshot, snapshotsHaveSameShape } from '../markdown/blocks.js';
+import {
+  parseDocumentSnapshot,
+  renderSnapshot,
+  snapshotsHaveSameShape
+} from '../markdown/blocks.js';
 import { MemoryStore } from '../memories/memory-store.js';
 import { Translator } from '../translation/translator.js';
 import { MemoryUpdater } from '../translation/memory-updater.js';
 import { debugLog, formatDuration, label, verboseLog } from '../ui.js';
-import { nowIso } from '../utils.js';
-import { RuntimeStore } from '../state/runtime-store.js';
+import { sha256 } from '../utils.js';
 import { LocalFolderProvider } from '../providers/local-folder-provider.js';
+import { LearnedTargetHashStore } from '../state/learned-target-hash-store.js';
+import { SourceHashStore } from '../state/source-hash-store.js';
 import { RequestPool } from '../concurrency/request-pool.js';
 import {
   DEFAULT_MAX_CONCURRENT_REQUESTS,
   MAX_MAX_CONCURRENT_REQUESTS
 } from '../config.js';
 
+const MAX_BOOTSTRAP_PAIRS_PER_DOC = 12;
+
 export class DocSetProcessor {
   private readonly memoryStore: MemoryStore;
+  private readonly sourceHashStore: SourceHashStore;
+  private readonly learnedTargetHashStore: LearnedTargetHashStore;
 
   public constructor(
     private readonly workspaceRoot: string,
     private readonly config: AppConfig,
     private readonly provider: LocalFolderProvider,
-    private readonly runtimeStore: RuntimeStore,
     private readonly translator: Translator,
     private readonly memoryUpdater: MemoryUpdater,
     private readonly managedWrites: Set<string>
   ) {
     this.memoryStore = new MemoryStore(workspaceRoot);
+    this.sourceHashStore = new SourceHashStore(workspaceRoot);
+    this.learnedTargetHashStore = new LearnedTargetHashStore(workspaceRoot);
   }
 
-  public async processDocSet(docSet: DocSet, reason: string): Promise<void> {
-    await this.learnWorkspace([docSet], this.config.targetLanguages);
-    await this.translateDocSet(docSet, reason, this.config.targetLanguages);
-  }
-
-  public async translateDocSet(docSet: DocSet, reason: string, targetLanguages: string[]): Promise<void> {
+  public async bootstrapWorkspace(
+    docSets: DocSet[],
+    targetLanguages: string[],
+    docLimits: Map<string, number | null> = new Map()
+  ): Promise<void> {
     const startedAt = Date.now();
     const totals = zeroUsage();
-    const state = await this.runtimeStore.load();
-    const docState: DocSetRuntimeState = state.docSets[docSet.id] ?? {
-      docSetId: docSet.id,
-      targets: {},
-      updatedAt: nowIso()
-    };
 
-    const sourceRaw = await this.provider.read(docSet.source.relativePath);
-    const currentSourceSnapshot = parseMarkdownSnapshot(docSet.source.relativePath, sourceRaw);
+    for (const targetLanguage of targetLanguages) {
+      const examples = await this.collectBootstrapExamples(
+        docSets,
+        targetLanguage,
+        docLimits.get(targetLanguage) ?? null
+      );
+      if (examples.length === 0) {
+        console.log(`${label('bootstrap', 'yellow')} No aligned ${targetLanguage} examples were found.`);
+        continue;
+      }
+
+      const currentPlaybook = await this.memoryStore.readPlaybook();
+      const nextPlaybook = await this.memoryUpdater.bootstrapMemory({
+        scope: 'playbook',
+        sourceLanguage: this.config.sourceLanguage,
+        targetLanguage,
+        memoryText: currentPlaybook,
+        examples
+      });
+      addUsage(totals, nextPlaybook.usage);
+      await this.memoryStore.writePlaybook(nextPlaybook.text);
+
+      const currentMemory = await this.memoryStore.read(targetLanguage);
+      const nextMemory = await this.memoryUpdater.bootstrapMemory({
+        scope: 'memory',
+        sourceLanguage: this.config.sourceLanguage,
+        targetLanguage,
+        memoryText: currentMemory,
+        examples
+      });
+      addUsage(totals, nextMemory.usage);
+      await this.memoryStore.write(targetLanguage, nextMemory.text);
+
+      console.log(
+        `${label('bootstrap', 'magenta')} Built playbook and ${targetLanguage} memory from ${examples.length} aligned document(s).`
+      );
+    }
+
     console.log(
-      `${label('translate', 'blue')} ${docSet.source.relativePath} (${targetLanguages.join(', ')}, reason: ${reason})`
+      `${label('done', 'green')} Bootstrap finished in ${formatDuration(Date.now() - startedAt)} (input: ${totals.inputTokens}, output: ${totals.outputTokens}, total: ${totals.totalTokens}).`
     );
-    verboseLog(
-      'sync',
-      'cyan',
-      `Loaded source snapshot for ${docSet.source.relativePath} with ${currentSourceSnapshot.blocks.length} total block(s).`
+  }
+
+  public async translateDocSet(
+    docSet: DocSet,
+    reason: string,
+    targetLanguages: string[],
+    options: {
+      force?: boolean;
+      requestPool?: RequestPool;
+      pathLocks?: Map<string, Promise<void>>;
+    } = {}
+  ): Promise<void> {
+    const startedAt = Date.now();
+    const totals = zeroUsage();
+    const sourceRaw = await this.provider.read(docSet.source.relativePath);
+    const sourceHash = sha256(sourceRaw);
+    const currentSourceSnapshot = parseDocumentSnapshot(docSet.source.relativePath, sourceRaw, {
+      layoutKind: this.config.layout.kind,
+      language: this.config.sourceLanguage
+    });
+    const changedBlockIndexes = currentSourceSnapshot.blocks
+      .filter((block) => block.translatable)
+      .map((block) => block.index);
+
+    const targetLanguagesToProcess: string[] = [];
+    for (const targetLanguage of targetLanguages) {
+      const targetRef = docSet.targets[targetLanguage];
+      if (!targetRef) {
+        continue;
+      }
+
+      if (options.force) {
+        targetLanguagesToProcess.push(targetLanguage);
+        continue;
+      }
+
+      const hasTarget = await this.provider.exists(targetRef.relativePath);
+      const recordedHash = await this.sourceHashStore.get(targetRef.relativePath);
+      if (hasTarget && recordedHash === sourceHash) {
+        verboseLog(
+          'skip',
+          'cyan',
+          `${targetRef.relativePath}: source hash unchanged, skipping translation.`
+        );
+        continue;
+      }
+
+      targetLanguagesToProcess.push(targetLanguage);
+    }
+
+    if (targetLanguagesToProcess.length === 0) {
+      console.log(`${label('skip', 'cyan')} ${docSet.source.relativePath} (all targets up to date)`);
+      return;
+    }
+
+    console.log(
+      `${label('translate', 'blue')} ${docSet.source.relativePath} (${targetLanguagesToProcess.join(', ')}, reason: ${reason})`
     );
     debugLog(
-      `${docSet.source.relativePath}: source snapshot block kinds = ${currentSourceSnapshot.blocks.map((block) => `${block.index + 1}:${block.kind}:${block.translatable ? 'T' : 'N'}`).join(', ')}.`
+      `${docSet.source.relativePath}: sourceChangedIndexes=${changedBlockIndexes.length > 0 ? changedBlockIndexes.map((index) => index + 1).join(', ') : '(none)'}, mode=full-document-on-source-change.`
     );
-    const requestPool = new RequestPool(
+
+    const requestPool = options.requestPool ?? new RequestPool(
       MAX_MAX_CONCURRENT_REQUESTS,
       this.config.concurrency?.maxConcurrentRequests ?? DEFAULT_MAX_CONCURRENT_REQUESTS
     );
-    verboseLog(
-      'sync',
-      'cyan',
-      `Using shared request pool limit ${requestPool.getLimit()} for ${docSet.source.relativePath}.`
-    );
 
-    const targetResults = await Promise.all(
-      targetLanguages.map(async (targetLanguage) => {
-        const nextTarget = await requestPool.run(() =>
-          this.syncTarget({
-            docSet,
-            docState,
-            sourceSnapshot: currentSourceSnapshot,
-            targetLanguage,
-            reason,
-            requestPool
-          })
-        );
+    const targetResults: Array<{ usage: ModelUsageStats }> = [];
+    const languagesByPath = new Map<string, string[]>();
 
-        return {
-          targetLanguage,
-          snapshot: nextTarget.snapshot,
-          usage: nextTarget.usage
-        };
+    for (const targetLanguage of targetLanguagesToProcess) {
+      const targetPath = docSet.targets[targetLanguage]?.relativePath;
+      if (!targetPath) {
+        continue;
+      }
+
+      const group = languagesByPath.get(targetPath) ?? [];
+      group.push(targetLanguage);
+      languagesByPath.set(targetPath, group);
+    }
+
+    const pathTasks = [...languagesByPath.entries()].map(([targetPath, groupedLanguages]) =>
+      this.runTranslateTaskForPath({
+        docSet,
+        sourceSnapshot: currentSourceSnapshot,
+        sourceHash,
+        targetPath,
+        targetLanguages: groupedLanguages,
+        changedBlockIndexes,
+        requestPool,
+        pathLocks: options.pathLocks
       })
     );
 
-    for (const targetResult of targetResults) {
-      addUsage(totals, targetResult.usage);
-      docState.targets[targetResult.targetLanguage] = {
-        language: targetResult.targetLanguage,
-        accepted: targetResult.snapshot,
-        generated: targetResult.snapshot
-      };
+    for (const targetResult of await Promise.all(pathTasks)) {
+      targetResults.push({ usage: targetResult.usage });
     }
 
-    docState.source = currentSourceSnapshot;
-    docState.updatedAt = nowIso();
-    state.docSets[docSet.id] = docState;
-    await this.runtimeStore.save(state);
+    for (const targetResult of targetResults) {
+      addUsage(totals, targetResult.usage);
+    }
 
     console.log(
       `${label('done', 'green')} ${docSet.source.relativePath} translated in ${formatDuration(Date.now() - startedAt)} (input: ${totals.inputTokens}, output: ${totals.outputTokens}, total: ${totals.totalTokens}).`
     );
   }
 
-  public async learnWorkspace(docSets: DocSet[], targetLanguages: string[]): Promise<void> {
+  private async runTranslateTaskForPath(input: {
+    docSet: DocSet;
+    sourceSnapshot: ReturnType<typeof parseDocumentSnapshot>;
+    sourceHash: string;
+    targetPath: string;
+    targetLanguages: string[];
+    changedBlockIndexes: number[];
+    requestPool: RequestPool;
+    pathLocks?: Map<string, Promise<void>>;
+  }): Promise<{ usage: ModelUsageStats }> {
+    const runTask = async (): Promise<{ usage: ModelUsageStats }> => {
+      const usage = zeroUsage();
+
+      for (const targetLanguage of input.targetLanguages) {
+        const nextTarget = await input.requestPool.run(() =>
+          this.syncTarget({
+            docSet: input.docSet,
+            sourceSnapshot: input.sourceSnapshot,
+            targetLanguage,
+            changedBlockIndexes: input.changedBlockIndexes,
+            forceFullTranslation: true,
+            requestPool: input.requestPool
+          }),
+          {
+            label: `${input.docSet.source.relativePath} -> ${input.docSet.targets[targetLanguage]!.relativePath}`
+          }
+        );
+        await this.sourceHashStore.set(input.docSet.targets[targetLanguage]!.relativePath, input.sourceHash);
+        addUsage(usage, nextTarget.usage);
+      }
+
+      return { usage };
+    };
+
+    if (!input.pathLocks) {
+      return runTask();
+    }
+
+    const previous = input.pathLocks.get(input.targetPath) ?? Promise.resolve();
+    const current = previous
+      .catch(() => undefined)
+      .then(runTask);
+
+    input.pathLocks.set(input.targetPath, current.then(() => undefined, () => undefined));
+    return current;
+  }
+
+  public async learnWorkspace(
+    docSets: DocSet[],
+    targetLanguages: string[],
+    options: { force?: boolean } = {}
+  ): Promise<void> {
     const startedAt = Date.now();
     const totals = zeroUsage();
-    const state = await this.runtimeStore.load();
-    const correctionsByLanguage = new Map<string, ManualCorrection[]>();
-    let touchedTargets = 0;
-
+    const targetSet = new Set(targetLanguages);
+    const candidatesByLanguage = new Map<string, LearnCandidate[]>();
     for (const docSet of docSets) {
-      const docState = state.docSets[docSet.id];
-      if (!docState?.source) {
-        continue;
-      }
-
-      for (const targetLanguage of targetLanguages) {
-        const targetRef = docSet.targets[targetLanguage];
-        const previousTargetState = docState.targets[targetLanguage];
-        if (!previousTargetState?.generated) {
+      for (const [targetLanguage, targetRef] of Object.entries(docSet.targets)) {
+        if (!targetSet.has(targetLanguage) || !(await this.provider.exists(targetRef.relativePath))) {
           continue;
         }
 
-        if (!(await this.provider.exists(targetRef.relativePath))) {
+        const currentTargetRaw = await this.provider.read(targetRef.relativePath);
+        const currentTargetHash = sha256(currentTargetRaw);
+        if (!options.force) {
+          const learnedHash = await this.learnedTargetHashStore.get(targetRef.relativePath);
+          if (learnedHash === currentTargetHash) {
+            verboseLog('skip', 'cyan', `${targetRef.relativePath}: target hash unchanged, skipping learn.`);
+            continue;
+          }
+        }
+
+        const candidates = await this.collectLearnCandidates(docSet, targetLanguage);
+        if (candidates.length === 0) {
           continue;
         }
 
-        const currentTargetSnapshot = parseMarkdownSnapshot(
-          targetRef.relativePath,
-          await this.provider.read(targetRef.relativePath)
-        );
-        if (currentTargetSnapshot.hash === previousTargetState.generated.hash) {
-          continue;
-        }
-
-        touchedTargets += 1;
-        console.log(`${label('learn', 'magenta')} ${targetRef.relativePath}`);
-        const rewriteJudgement = await this.judgeManualRewrite({
-          targetLanguage,
-          generatedTargetSnapshot: previousTargetState.generated,
-          currentTargetSnapshot
-        });
-        addUsage(totals, rewriteJudgement.usage);
-        console.log(
-          `${label('memory', 'magenta')} Rewrite check for ${targetRef.relativePath}: ${rewriteJudgement.isMajorRewrite ? 'major rewrite' : 'reusable corrections'} (${rewriteJudgement.reason}).`
-        );
-
-        docState.targets[targetLanguage] = {
-          language: targetLanguage,
-          accepted: currentTargetSnapshot,
-          generated: currentTargetSnapshot
-        };
-
-        if (rewriteJudgement.isMajorRewrite) {
-          continue;
-        }
-
-        const corrections = this.collectManualCorrections(
-          docState.source,
-          previousTargetState.generated,
-          currentTargetSnapshot
-        );
-        if (corrections === 'skip' || corrections.length === 0) {
-          continue;
-        }
-
-        const existing = correctionsByLanguage.get(targetLanguage) ?? [];
-        existing.push(...corrections);
-        correctionsByLanguage.set(targetLanguage, existing);
+        const existing = candidatesByLanguage.get(targetLanguage) ?? [];
+        existing.push(...candidates);
+        candidatesByLanguage.set(targetLanguage, existing);
       }
     }
 
-    for (const targetLanguage of targetLanguages) {
-      const corrections = correctionsByLanguage.get(targetLanguage) ?? [];
-      if (corrections.length === 0) {
-        continue;
-      }
-
-      const currentPlaybook = await this.memoryStore.readPlaybook();
-      const updatedPlaybook = await this.memoryUpdater.updateMemory({
-        scope: 'playbook',
-        sourceLanguage: this.config.sourceLanguage,
-        targetLanguage,
-        memoryText: currentPlaybook,
-        corrections
-      });
-      addUsage(totals, updatedPlaybook.usage);
-      await this.memoryStore.writePlaybook(stripOuterMarkdownFence(updatedPlaybook.text));
-      console.log(
-        `${label('memory', 'magenta')} Updated global playbook from ${targetLanguage} review corrections.`
-      );
-
-      const currentMemory = await this.memoryStore.read(targetLanguage);
-      const updatedMemory = await this.memoryUpdater.updateMemory({
-        scope: 'memory',
-        sourceLanguage: this.config.sourceLanguage,
-        targetLanguage,
-        memoryText: currentMemory,
-        corrections
-      });
-      addUsage(totals, updatedMemory.usage);
-      await this.memoryStore.write(targetLanguage, stripOuterMarkdownFence(updatedMemory.text));
-      console.log(
-        `${label('memory', 'magenta')} Updated ${targetLanguage} memory with ${corrections.length} correction(s).`
-      );
-    }
-
-    await this.runtimeStore.save(state);
-
-    if (touchedTargets === 0) {
-      console.log(`${label('learn', 'magenta')} No manual translation changes were found.`);
+    if (candidatesByLanguage.size === 0) {
+      console.log(`${label('learn', 'magenta')} No translation edits required learning.`);
       return;
     }
 
+    for (const targetLanguage of targetLanguages) {
+      const candidates = candidatesByLanguage.get(targetLanguage) ?? [];
+      if (candidates.length === 0) {
+        continue;
+      }
+
+      console.log(`${label('learn', 'magenta')} Reviewing ${candidates.length} edited block(s) for ${targetLanguage}.`);
+      const currentPlaybook = await this.memoryStore.readPlaybook();
+      const currentMemory = await this.memoryStore.read(targetLanguage);
+      const judged = await this.memoryUpdater.judgeLearnCandidates({
+        sourceLanguage: this.config.sourceLanguage,
+        targetLanguage,
+        currentPlaybook,
+        currentMemory,
+        candidates
+      });
+      addUsage(totals, judged.usage);
+
+      const playbookRules = uniqueRules(judged.items.filter((item) => item.shouldLearn && item.scope === 'playbook'));
+      const memoryRules = uniqueRules(judged.items.filter((item) => item.shouldLearn && item.scope === 'memory'));
+
+      if (playbookRules.length > 0) {
+        const updatedPlaybook = await this.memoryUpdater.mergeRules({
+          scope: 'playbook',
+          sourceLanguage: this.config.sourceLanguage,
+          targetLanguage,
+          memoryText: currentPlaybook,
+          rules: playbookRules
+        });
+        addUsage(totals, updatedPlaybook.usage);
+        await this.memoryStore.writePlaybook(updatedPlaybook.text);
+        console.log(`${label('memory', 'magenta')} Updated global playbook from ${targetLanguage} edits.`);
+      }
+
+      if (memoryRules.length > 0) {
+        const updatedMemory = await this.memoryUpdater.mergeRules({
+          scope: 'memory',
+          sourceLanguage: this.config.sourceLanguage,
+          targetLanguage,
+          memoryText: currentMemory,
+          rules: memoryRules
+        });
+        addUsage(totals, updatedMemory.usage);
+        await this.memoryStore.write(targetLanguage, updatedMemory.text);
+        console.log(`${label('memory', 'magenta')} Updated ${targetLanguage} memory with ${memoryRules.length} rule(s).`);
+      }
+
+      const ignored = judged.items.filter((item) => !item.shouldLearn || item.scope === 'ignore').length;
+      console.log(
+        `${label('learn', 'magenta')} ${targetLanguage}: ${playbookRules.length + memoryRules.length} reusable rule(s), ${ignored} ignored edit(s).`
+      );
+
+      const learnedTargetPaths = new Set(candidates.map((candidate) => candidate.targetPath));
+      for (const targetPath of learnedTargetPaths) {
+        const currentTargetRaw = await this.provider.read(targetPath);
+        await this.learnedTargetHashStore.set(targetPath, sha256(currentTargetRaw));
+      }
+    }
+
     console.log(
-      `${label('done', 'green')} Learned from ${touchedTargets} edited translation file(s) in ${formatDuration(Date.now() - startedAt)} (input: ${totals.inputTokens}, output: ${totals.outputTokens}, total: ${totals.totalTokens}).`
+      `${label('done', 'green')} Learned from translation edits in ${formatDuration(Date.now() - startedAt)} (input: ${totals.inputTokens}, output: ${totals.outputTokens}, total: ${totals.totalTokens}).`
     );
+  }
+
+  private async collectBootstrapExamples(
+    docSets: DocSet[],
+    targetLanguage: string,
+    docLimit: number | null
+  ): Promise<BootstrapExample[]> {
+    const examples: BootstrapExample[] = [];
+
+    for (const docSet of docSets) {
+      const targetRef = docSet.targets[targetLanguage];
+      if (!targetRef || !(await this.provider.exists(targetRef.relativePath))) {
+        continue;
+      }
+
+      const sourceSnapshot = parseDocumentSnapshot(
+        docSet.source.relativePath,
+        await this.provider.read(docSet.source.relativePath),
+        { layoutKind: this.config.layout.kind, language: this.config.sourceLanguage }
+      );
+      const targetSnapshot = parseDocumentSnapshot(
+        targetRef.relativePath,
+        await this.provider.read(targetRef.relativePath),
+        { layoutKind: this.config.layout.kind, language: targetLanguage }
+      );
+
+      if (!snapshotsHaveSameShape(sourceSnapshot, targetSnapshot)) {
+        continue;
+      }
+
+      const pairs = sourceSnapshot.blocks
+        .filter((block) => block.translatable)
+        .slice(0, MAX_BOOTSTRAP_PAIRS_PER_DOC)
+        .map((block) => ({
+          blockIndex: block.index + 1,
+          sourceBlock: block.raw,
+          targetBlock: targetSnapshot.blocks[block.index]?.raw ?? ''
+        }))
+        .filter((pair) => pair.targetBlock.trim().length > 0);
+
+      if (pairs.length === 0) {
+        continue;
+      }
+
+      examples.push({
+        docKey: docSet.docKey,
+        sourcePath: docSet.source.relativePath,
+        targetPath: targetRef.relativePath,
+        pairs
+      });
+
+      if (docLimit !== null && examples.length >= docLimit) {
+        break;
+      }
+    }
+
+    return examples;
+  }
+
+  private async collectLearnCandidates(docSet: DocSet, targetLanguage: string): Promise<LearnCandidate[]> {
+    const targetRef = docSet.targets[targetLanguage];
+    if (!(await this.provider.exists(targetRef.relativePath))) {
+      return [];
+    }
+
+    const sourceRaw = await this.provider.read(docSet.source.relativePath);
+    const targetRaw = await this.provider.read(targetRef.relativePath);
+    const sourceSnapshot = parseDocumentSnapshot(
+      docSet.source.relativePath,
+      sourceRaw,
+      { layoutKind: this.config.layout.kind, language: this.config.sourceLanguage }
+    );
+    const targetSnapshot = parseDocumentSnapshot(
+      targetRef.relativePath,
+      targetRaw,
+      { layoutKind: this.config.layout.kind, language: targetLanguage }
+    );
+
+    const hasSourceContent = sourceSnapshot.blocks.some((block) => block.translatable && block.raw.trim().length > 0);
+    const hasTargetContent = targetSnapshot.blocks.some((block) => block.translatable && block.raw.trim().length > 0);
+    if (!hasSourceContent || !hasTargetContent) {
+      return [];
+    }
+
+    return [
+      {
+        docKey: docSet.docKey,
+        targetLanguage,
+        targetPath: targetRef.relativePath,
+        sourcePath: docSet.source.relativePath,
+        sourceDocument: sourceRaw,
+        targetDocument: targetRaw
+      }
+    ];
   }
 
   private async syncTarget(input: {
     docSet: DocSet;
-    docState: DocSetRuntimeState;
-    sourceSnapshot: DocumentSnapshot;
+    sourceSnapshot: ReturnType<typeof parseDocumentSnapshot>;
     targetLanguage: string;
-    reason: string;
+    changedBlockIndexes: number[];
+    forceFullTranslation: boolean;
     requestPool: RequestPool;
-  }): Promise<{
-    snapshot: DocumentSnapshot;
-    usage: ModelUsageStats;
-  }> {
+  }): Promise<{ usage: ModelUsageStats }> {
     const targetRef = input.docSet.targets[input.targetLanguage];
     console.log(`${label('translate', 'blue')} ${input.docSet.source.relativePath} -> ${targetRef.relativePath}`);
     const currentMemory = await this.memoryStore.readPromptContext(input.targetLanguage);
     const targetExists = await this.provider.exists(targetRef.relativePath);
     const currentTargetSnapshot = targetExists
-      ? parseMarkdownSnapshot(targetRef.relativePath, await this.provider.read(targetRef.relativePath))
+      ? parseDocumentSnapshot(targetRef.relativePath, await this.provider.read(targetRef.relativePath), {
+          layoutKind: this.config.layout.kind,
+          language: input.targetLanguage
+        })
       : undefined;
-    const previousTargetSnapshot =
-      currentTargetSnapshot ?? input.docState.targets[input.targetLanguage]?.accepted;
-
-    const changedBlockIndexes = getChangedBlockIndexes(
-      input.docState.source,
-      input.sourceSnapshot
-    );
-    const sourceChanged = changedBlockIndexes.length > 0;
-    const targetShapeMatchesSource = snapshotsHaveSameShape(
-      previousTargetSnapshot,
-      input.sourceSnapshot
-    );
-
+    const targetShapeMatchesSource = snapshotsHaveSameShape(currentTargetSnapshot, input.sourceSnapshot);
     const nextBlockRaws: string[] = [];
     const translatedIndexes: number[] = [];
-    const translatableBlocks = input.sourceSnapshot.blocks.filter((block) => block.translatable).length;
-    const pendingBlocks = input.sourceSnapshot.blocks
-      .filter((block) => {
-        if (!block.translatable) {
-          return false;
-        }
-
-        const existingTranslation = previousTargetSnapshot?.blocks[block.index]?.raw;
-        const shouldTranslate =
-          !targetExists ||
-          !previousTargetSnapshot ||
-          changedBlockIndexes.includes(block.index) ||
-          (sourceChanged && !targetShapeMatchesSource);
-
-        return shouldTranslate || !existingTranslation;
-      });
     const usage = zeroUsage();
-    verboseLog(
-      'target',
-      'cyan',
-      `${targetRef.relativePath}: ${pendingBlocks.length}/${translatableBlocks} translatable block(s) need translation.`
-    );
+
+    const pendingBlocks = input.sourceSnapshot.blocks.filter((block) => {
+      if (!block.translatable) {
+        return false;
+      }
+
+      const existingTranslation = currentTargetSnapshot?.blocks[block.index]?.raw;
+      const shouldTranslate =
+        input.forceFullTranslation ||
+        !targetExists ||
+        !targetShapeMatchesSource ||
+        input.changedBlockIndexes.includes(block.index);
+
+      return shouldTranslate || !existingTranslation;
+    });
+
     debugLog(
-      `${targetRef.relativePath}: changed source indexes = ${changedBlockIndexes.length > 0 ? changedBlockIndexes.map((index) => index + 1).join(', ') : '(none)'}, sourceChanged=${sourceChanged}, targetShapeMatchesSource=${targetShapeMatchesSource}.`
-    );
-    debugLog(
-      `${targetRef.relativePath}: pending source indexes = ${pendingBlocks.length > 0 ? pendingBlocks.map((block) => block.index + 1).join(', ') : '(none)'}.`
+      `${targetRef.relativePath}: pendingIndexes=${pendingBlocks.length > 0 ? pendingBlocks.map((block) => block.index + 1).join(', ') : '(none)'}, targetShapeMatchesSource=${targetShapeMatchesSource}, forceFullTranslation=${input.forceFullTranslation}.`
     );
 
     for (const block of input.sourceSnapshot.blocks) {
-      const existingTranslation = previousTargetSnapshot?.blocks[block.index]?.raw;
-
+      const existingTranslation = currentTargetSnapshot?.blocks[block.index]?.raw;
       if (!block.translatable) {
         nextBlockRaws[block.index] = block.raw;
         continue;
       }
 
       const shouldTranslate =
+        input.forceFullTranslation ||
         !targetExists ||
-        !previousTargetSnapshot ||
-        changedBlockIndexes.includes(block.index) ||
-        (sourceChanged && !targetShapeMatchesSource);
+        !targetShapeMatchesSource ||
+        input.changedBlockIndexes.includes(block.index);
 
       if (!shouldTranslate && existingTranslation) {
         nextBlockRaws[block.index] = existingTranslation;
-        continue;
       }
     }
 
     if (pendingBlocks.length > 0) {
-      verboseLog(
-        'target',
-        'cyan',
-        `${targetRef.relativePath}: translating the whole article in a single request.`
-      );
-      debugLog(
-        `${targetRef.relativePath}: single article translation request covers source indexes ${pendingBlocks.map((block) => block.index + 1).join(', ')}.`
-      );
-
       const articleResult = await this.withRateLimitRetry(
         () =>
           this.translateArticleOnce({
@@ -334,20 +521,17 @@ export class DocSetProcessor {
       );
 
       addUsage(usage, articleResult.usage);
-      verboseLog(
-        'target',
-        'cyan',
-        `${targetRef.relativePath}: article translation finished, tokens ${articleResult.usage.totalTokens}.`
-      );
-
       for (const item of articleResult.items) {
         nextBlockRaws[item.index] = stripOuterMarkdownFence(item.text);
         translatedIndexes.push(item.index);
       }
     }
 
-    const nextRaw = renderSnapshot(input.sourceSnapshot, nextBlockRaws);
-    const previousRaw = currentTargetSnapshot ? renderSnapshot(currentTargetSnapshot, currentTargetSnapshot.blocks.map((block) => block.raw)) : '';
+    const renderBaseSnapshot = currentTargetSnapshot ?? input.sourceSnapshot;
+    const nextRaw = renderSnapshot(renderBaseSnapshot, nextBlockRaws);
+    const previousRaw = currentTargetSnapshot
+      ? renderSnapshot(currentTargetSnapshot, currentTargetSnapshot.blocks.map((block) => block.raw))
+      : '';
 
     if (!targetExists || previousRaw !== nextRaw) {
       this.managedWrites.add(targetRef.relativePath);
@@ -360,20 +544,9 @@ export class DocSetProcessor {
       setTimeout(() => {
         this.managedWrites.delete(targetRef.relativePath);
       }, 1_500);
-    } else {
-      verboseLog(
-        'write',
-        'cyan',
-        `${targetRef.relativePath}: no file changes were needed after sync.`
-      );
     }
 
-    const nextSnapshot = parseMarkdownSnapshot(targetRef.relativePath, nextRaw);
-
-    return {
-      snapshot: nextSnapshot,
-      usage
-    };
+    return { usage };
   }
 
   private async translateArticleOnce(input: {
@@ -391,36 +564,22 @@ export class DocSetProcessor {
     usage: ModelUsageStats;
   }> {
     if (input.blocks.length === 1) {
-      verboseLog('target', 'cyan', `${input.targetLanguage}: only one block changed, using a single direct translation call.`);
       const block = input.blocks[0]!;
-      return this.translateSingleBlock({
+      const translated = await this.translator.translateBlock({
         sourceLanguage: input.sourceLanguage,
         targetLanguage: input.targetLanguage,
         memoryText: input.memoryText,
-        docKey: input.docKey,
-        block
+        sourceBlock: block.raw,
+        docKey: input.docKey
       });
+
+      return {
+        items: [{ index: block.index, text: translated.text }],
+        usage: translated.usage
+      };
     }
 
-    const translatorWithBatch = this.translator as Translator & {
-      translateBlocks?: (input: {
-        sourceLanguage: string;
-        targetLanguage: string;
-        memoryText: string;
-        docKey: string;
-        blocks: Array<{
-          index: number;
-          sourceBlock: string;
-          existingTranslation?: string;
-        }>;
-      }) => Promise<{ texts: string[]; usage: ModelUsageStats }>;
-    };
-
-    if (typeof translatorWithBatch.translateBlocks !== 'function') {
-      throw new Error('Translator does not support whole-article batch translation.');
-    }
-
-    const translated = await translatorWithBatch.translateBlocks({
+    const translated = await this.translator.translateBlocks({
       sourceLanguage: input.sourceLanguage,
       targetLanguage: input.targetLanguage,
       memoryText: input.memoryText,
@@ -436,37 +595,6 @@ export class DocSetProcessor {
         index: block.index,
         text: translated.texts[idx] ?? ''
       })),
-      usage: translated.usage
-    };
-  }
-
-  private async translateSingleBlock(input: {
-    sourceLanguage: string;
-    targetLanguage: string;
-    memoryText: string;
-    docKey: string;
-    block: {
-      index: number;
-      raw: string;
-      translatable: boolean;
-    };
-  }): Promise<{
-    items: Array<{ index: number; text: string }>;
-    usage: ModelUsageStats;
-  }> {
-    debugLog(
-      `${input.targetLanguage}: translate single source index ${input.block.index + 1}, chars=${input.block.raw.length}.`
-    );
-    const translated = await this.translator.translateBlock({
-      sourceLanguage: input.sourceLanguage,
-      targetLanguage: input.targetLanguage,
-      memoryText: input.memoryText,
-      sourceBlock: input.block.raw,
-      docKey: input.docKey
-    });
-
-    return {
-      items: [{ index: input.block.index, text: translated.text }],
       usage: translated.usage
     };
   }
@@ -488,100 +616,14 @@ export class DocSetProcessor {
       console.warn(
         `${label('warning', 'yellow')} Rate limited. Retrying in ${delayMs}ms (attempt ${attempt + 1}/3).`
       );
-      verboseLog(
-        'retry',
-        'cyan',
-        `Rate limit retry scheduled after ${delayMs}ms (attempt ${attempt + 1}/3).`
-      );
       await sleep(delayMs);
       return this.withRateLimitRetry(task, requestPool, attempt + 1);
     }
   }
+}
 
-  private async judgeManualRewrite(input: {
-    targetLanguage: string;
-    generatedTargetSnapshot: DocumentSnapshot;
-    currentTargetSnapshot: DocumentSnapshot;
-  }): Promise<{ isMajorRewrite: boolean; reason: string; usage: ModelUsageStats }> {
-    const judge = this.memoryUpdater as MemoryUpdater & {
-      judgeManualRewrite?: (input: {
-        sourceLanguage: string;
-        targetLanguage: string;
-        generatedTargetSnapshot: DocumentSnapshot;
-        currentTargetSnapshot: DocumentSnapshot;
-      }) => Promise<{ isMajorRewrite: boolean; reason: string; usage: ModelUsageStats }>;
-    };
-
-    if (typeof judge.judgeManualRewrite === 'function') {
-      return judge.judgeManualRewrite({
-        sourceLanguage: this.config.sourceLanguage,
-        targetLanguage: input.targetLanguage,
-        generatedTargetSnapshot: input.generatedTargetSnapshot,
-        currentTargetSnapshot: input.currentTargetSnapshot
-      });
-    }
-
-    return {
-      isMajorRewrite: isLikelyLargeRewrite(input.generatedTargetSnapshot, input.currentTargetSnapshot),
-      reason: 'Fallback heuristic: no model-based rewrite judge was available.',
-      usage: zeroUsage()
-    };
-  }
-
-  private collectManualCorrections(
-    previousSourceSnapshot: DocumentSnapshot | undefined,
-    generatedTargetSnapshot: DocumentSnapshot | undefined,
-    currentTargetSnapshot: DocumentSnapshot
-  ): ManualCorrection[] | 'skip' {
-    if (!previousSourceSnapshot || !generatedTargetSnapshot) {
-      return [];
-    }
-
-    if (!snapshotsHaveSameShape(previousSourceSnapshot, generatedTargetSnapshot)) {
-      return [];
-    }
-
-    if (!snapshotsHaveSameShape(generatedTargetSnapshot, currentTargetSnapshot)) {
-      return 'skip';
-    }
-
-    const corrections: ManualCorrection[] = [];
-    let changedTranslatableBlocks = 0;
-
-    for (const block of generatedTargetSnapshot.blocks) {
-      if (!block.translatable) {
-        continue;
-      }
-
-      const currentBlock = currentTargetSnapshot.blocks[block.index];
-      const sourceBlock = previousSourceSnapshot.blocks[block.index];
-
-      if (!currentBlock || !sourceBlock) {
-        continue;
-      }
-
-      if (currentBlock.raw !== block.raw) {
-        changedTranslatableBlocks += 1;
-        corrections.push({
-          index: block.index,
-          sourceBlock: sourceBlock.raw,
-          previousTranslation: block.raw,
-          correctedTranslation: currentBlock.raw
-        });
-      }
-    }
-
-    const totalTranslatableBlocks = generatedTargetSnapshot.blocks.filter((block) => block.translatable).length;
-    if (
-      totalTranslatableBlocks >= 5 &&
-      changedTranslatableBlocks >= 3 &&
-      changedTranslatableBlocks / totalTranslatableBlocks > 0.6
-    ) {
-      return 'skip';
-    }
-
-    return corrections;
-  }
+function uniqueRules(items: LearnJudgement[]): string[] {
+  return [...new Set(items.map((item) => item.proposedRule.trim()).filter(Boolean))];
 }
 
 function zeroUsage(): ModelUsageStats {
@@ -606,23 +648,6 @@ function stripOuterMarkdownFence(text: string): string {
   }
 
   return match[1] ?? normalized;
-}
-
-function isLikelyLargeRewrite(
-  generatedTargetSnapshot: DocumentSnapshot,
-  currentTargetSnapshot: DocumentSnapshot
-): boolean {
-  if (!snapshotsHaveSameShape(generatedTargetSnapshot, currentTargetSnapshot)) {
-    return true;
-  }
-
-  const generatedBlocks = generatedTargetSnapshot.blocks.filter((block) => block.translatable);
-  const changedBlocks = generatedBlocks.filter((block) => {
-    const currentBlock = currentTargetSnapshot.blocks[block.index];
-    return currentBlock && currentBlock.raw !== block.raw;
-  }).length;
-
-  return generatedBlocks.length >= 5 && changedBlocks >= 3 && changedBlocks / generatedBlocks.length > 0.6;
 }
 
 function isRetryableRateLimitError(error: unknown): boolean {

@@ -1,0 +1,28 @@
+{
+  "id": "learn_term_fix_should_enter_memory",
+  "category": "learn",
+  "kind": "good",
+  "title": "Learn should turn a term correction into language memory",
+  "command": "docplaybook learn . --langs en",
+  "why_this_case_exists": "This is the most basic learn success case: a reviewer fixes a recurring term, and the tool should save that preference as reusable memory.",
+  "setup": [
+    "The repository is a Git repo.",
+    "The target file already exists in HEAD and is modified in the working tree.",
+    "The source block still clearly refers to the same recurring product concept."
+  ],
+  "input": {
+    "source_block": "使用知识库管理文档。",
+    "before_translation": "Use the knowledge base to manage docs.",
+    "after_translation": "Use the Wiki to manage docs."
+  },
+  "expected": [
+    "The edit is judged reusable.",
+    "The rule is written to the English language memory, under terminology or an equivalent section.",
+    "The new rule is specific, for example: Translate \"知识库\" as \"Wiki\"."
+  ],
+  "should_not_happen": [
+    "The edit is ignored.",
+    "The tool only writes vague filler such as Keep terminology consistent.",
+    "The rule is written to playbook.md instead of the English memory."
+  ]
+}

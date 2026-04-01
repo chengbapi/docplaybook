@@ -1,0 +1,29 @@
+{
+  "id": "translate_term_consistency",
+  "category": "translate",
+  "kind": "good",
+  "title": "Translate should keep project terminology stable",
+  "command": "docplaybook translate . --langs en",
+  "why_this_case_exists": "This checks the most important steady-state translation behavior: source changed a little, but the preferred term from memory should stay stable.",
+  "setup": [
+    "The repository is a Git repo.",
+    "The source file exists in HEAD and is modified in the working tree.",
+    "The target file already exists.",
+    "The current English memory already prefers Wiki over Knowledge Base."
+  ],
+  "input": {
+    "before_source_block": "使用知识库管理文档。",
+    "after_source_block": "使用知识库统一管理团队文档。",
+    "current_target_block": "Use the Wiki to manage docs."
+  },
+  "expected": [
+    "Only the changed target block is regenerated.",
+    "The updated translation still uses Wiki.",
+    "Unchanged surrounding blocks stay unchanged or effectively unchanged."
+  ],
+  "should_not_happen": [
+    "The term drifts back to Knowledge Base.",
+    "The command rewrites unrelated blocks.",
+    "The model adds explanatory meaning that does not exist in the source."
+  ]
+}

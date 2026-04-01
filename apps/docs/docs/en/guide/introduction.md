@@ -2,12 +2,12 @@
 
 ## What DocPlaybook does
 
-`DocPlaybook` helps documentation teams maintain multilingual Markdown docs with a Git-first workflow instead of hidden local runtime state.
+`DocPlaybook` helps documentation teams maintain multilingual Markdown docs with a state-driven workflow instead of opaque Git-style before/after baselines.
 
 - Choose your own LLM provider and model.
-- Use Git-tracked source diffs to update only the translated blocks that need regeneration.
+- Use source-hash tracking to skip unchanged docs and refresh stale or missing translations.
 - Learn from review and reuse terminology, tone, and style decisions.
-- Review translations with concrete lint-style findings instead of vague model output.
+- Review translations with concrete health-check findings instead of vague model output.
 
 ## Best supported integrations
 
@@ -65,8 +65,7 @@ pnpm exec docplaybook lint .
 
 ## Where to go next
 
-- [Quick Start](/guide/quick-start) for installation, initialization, provider setup, and layout conventions
-- [Quick Start](/guide/quick-start) for installation, initialization, bootstrap, and commands
+- [Quick Start](/guide/quick-start) for installation, initialization, bootstrap, and command basics
 - [Project Workflow](/guide/workflow) for scripts, hooks, and CI patterns
-- [Advanced](/guide/advanced) for Git-based translation behavior and safety tradeoffs
+- [Advanced](/guide/advanced) for state-driven translation behavior and safety tradeoffs
 - [CI](/guide/ci) if you want one shared provider and one shared translation budget

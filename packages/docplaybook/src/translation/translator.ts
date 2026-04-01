@@ -1,5 +1,8 @@
 import { generateText } from 'ai';
 import { randomUUID } from 'node:crypto';
+import os from 'node:os';
+import path from 'node:path';
+import { promises as fs } from 'node:fs';
 import type {
   BatchTranslationResult,
   ModelUsageStats,
@@ -12,7 +15,11 @@ import {
   buildTranslationSystemPrompt
 } from './prompts.js';
 import type { ModelHandle } from '../model/model-factory.js';
-import { debugLog, verboseLog } from '../ui.js';
+import { debugLog, isDebugEnabled, verboseLog } from '../ui.js';
+
+const BATCH_SPLIT_THRESHOLD = readPositiveIntEnv('DOCPLAYBOOK_BATCH_SPLIT_THRESHOLD') ?? 30;
+const BATCH_CHUNK_SIZE = readPositiveIntEnv('DOCPLAYBOOK_BATCH_CHUNK_SIZE') ?? 16;
+const DEBUG_TRACE_DIR = path.join(os.tmpdir(), 'docplaybook-llm-trace');
 
 export class Translator {
   public constructor(private readonly modelHandle: ModelHandle) {}
@@ -27,6 +34,16 @@ export class Translator {
       model: this.modelHandle.model,
       system: systemPrompt,
       prompt
+    });
+    await writeDebugTrace({
+      kind: 'single',
+      docKey: context.docKey,
+      targetLanguage: context.targetLanguage,
+      blockCount: 1,
+      sourceChars: context.sourceBlock.length,
+      systemPrompt,
+      prompt,
+      responseText: result.text
     });
 
     return {
@@ -46,10 +63,51 @@ export class Translator {
       existingTranslation?: string;
     }>;
   }): Promise<BatchTranslationResult> {
+    if (input.blocks.length > BATCH_SPLIT_THRESHOLD) {
+      const chunks = chunkBlocks(input.blocks, BATCH_CHUNK_SIZE);
+      const usage = zeroUsage();
+      const texts: string[] = [];
+      debugLog(
+        `batch ${input.targetLanguage} chunking for ${input.docKey}: totalBlocks=${input.blocks.length}, chunkCount=${chunks.length}, chunkSize=${BATCH_CHUNK_SIZE}.`
+      );
+
+      for (const [index, chunk] of chunks.entries()) {
+        debugLog(
+          `batch ${input.targetLanguage} chunk ${index + 1}/${chunks.length} for ${input.docKey}: blocks=${chunk.length}, sourceChars=${chunk.reduce((sum, block) => sum + block.sourceBlock.length, 0)}.`
+        );
+        const chunkResult = await this.translateBatchChunk({
+          ...input,
+          blocks: chunk
+        });
+        texts.push(...chunkResult.texts);
+        addUsage(usage, chunkResult.usage);
+      }
+
+      return {
+        texts,
+        usage
+      };
+    }
+
+    return this.translateBatchChunk(input);
+  }
+
+  private async translateBatchChunk(input: {
+    sourceLanguage: string;
+    targetLanguage: string;
+    memoryText: string;
+    docKey: string;
+    blocks: Array<{
+      index: number;
+      sourceBlock: string;
+      existingTranslation?: string;
+    }>;
+  }): Promise<BatchTranslationResult> {
     const blocksWithIds = input.blocks.map((block) => ({
       ...block,
       id: randomUUID().slice(0, 8)
     }));
+    const totalSourceChars = input.blocks.reduce((sum, block) => sum + block.sourceBlock.length, 0);
     const systemPrompt = buildTranslationSystemPrompt({
       sourceLanguage: input.sourceLanguage,
       targetLanguage: input.targetLanguage,
@@ -69,22 +127,92 @@ export class Translator {
     debugLog(
       `batch ${input.targetLanguage} prompt for ${input.docKey}: blocks=${blocksWithIds.length}, memoryChars=${input.memoryText.length}, systemChars=${systemPrompt.length}, promptChars=${prompt.length}.`
     );
+    const batchStartedAt = Date.now();
     const result = await generateText({
       model: this.modelHandle.model,
       system: systemPrompt,
       prompt
     });
+    await writeDebugTrace({
+      kind: 'batch',
+      docKey: input.docKey,
+      targetLanguage: input.targetLanguage,
+      blockCount: blocksWithIds.length,
+      sourceChars: totalSourceChars,
+      systemPrompt,
+      prompt,
+      responseText: result.text
+    });
 
-    const texts = parseBatchTranslation(result.text, blocksWithIds);
-    verboseLog(
-      'batch',
-      'cyan',
-      `${input.targetLanguage}: parsed batch response for ${blocksWithIds.length} block id(s).`
+    try {
+      const texts = parseBatchTranslation(result.text, blocksWithIds);
+      verboseLog(
+        'batch',
+        'cyan',
+        `${input.targetLanguage}: parsed batch response for ${blocksWithIds.length} block id(s) in ${Date.now() - batchStartedAt}ms.`
+      );
+      debugLog(
+        `batch ${input.targetLanguage} success for ${input.docKey}: blocks=${blocksWithIds.length}, sourceChars=${totalSourceChars}, elapsedMs=${Date.now() - batchStartedAt}.`
+      );
+
+      return {
+        texts,
+        usage: normalizeUsage(result.usage)
+      };
+    } catch (error) {
+      console.warn(
+        `Batch translation JSON parse failed for ${input.docKey} (${input.targetLanguage}); falling back to single-block translation.`
+      );
+      debugLog(
+        `batch ${input.targetLanguage} parse failure for ${input.docKey}: blocks=${blocksWithIds.length}, sourceChars=${totalSourceChars}, elapsedMs=${Date.now() - batchStartedAt}, error=${error instanceof Error ? error.message : String(error)}`
+      );
+      return this.translateBlocksIndividually(input);
+    }
+  }
+
+  private async translateBlocksIndividually(input: {
+    sourceLanguage: string;
+    targetLanguage: string;
+    memoryText: string;
+    docKey: string;
+    blocks: Array<{
+      index: number;
+      sourceBlock: string;
+      existingTranslation?: string;
+    }>;
+  }): Promise<BatchTranslationResult> {
+    const texts: string[] = [];
+    const usage = zeroUsage();
+    const startedAt = Date.now();
+    const totalSourceChars = input.blocks.reduce((sum, block) => sum + block.sourceBlock.length, 0);
+    debugLog(
+      `single-block fallback ${input.targetLanguage} for ${input.docKey}: blocks=${input.blocks.length}, sourceChars=${totalSourceChars}.`
+    );
+
+    for (const block of input.blocks) {
+      const blockStartedAt = Date.now();
+      const translated = await this.translateBlock({
+        sourceLanguage: input.sourceLanguage,
+        targetLanguage: input.targetLanguage,
+        memoryText: input.memoryText,
+        sourceBlock: block.sourceBlock,
+        existingTranslation: block.existingTranslation,
+        docKey: input.docKey
+      });
+      texts.push(translated.text);
+      addUsage(usage, translated.usage);
+      debugLog(
+        `single-block fallback ${input.targetLanguage} block for ${input.docKey}: index=${block.index + 1}, sourceChars=${block.sourceBlock.length}, elapsedMs=${Date.now() - blockStartedAt}.`
+      );
+    }
+
+    debugLog(
+      `single-block fallback ${input.targetLanguage} complete for ${input.docKey}: blocks=${input.blocks.length}, sourceChars=${totalSourceChars}, elapsedMs=${Date.now() - startedAt}.`
     );
 
     return {
       texts,
-      usage: normalizeUsage(result.usage)
+      usage
     };
   }
 }
@@ -96,6 +224,14 @@ function stripOuterMarkdownFence(text: string): string {
   }
 
   return match[1] ?? text;
+}
+
+function chunkBlocks<T>(items: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size));
+  }
+  return chunks;
 }
 
 function parseBatchTranslation(
@@ -150,4 +286,69 @@ function normalizeUsage(usage: {
     outputTokens: usage.outputTokens ?? 0,
     totalTokens: usage.totalTokens ?? 0
   };
+}
+
+function zeroUsage(): ModelUsageStats {
+  return {
+    inputTokens: 0,
+    outputTokens: 0,
+    totalTokens: 0
+  };
+}
+
+function addUsage(target: ModelUsageStats, usage: ModelUsageStats): void {
+  target.inputTokens += usage.inputTokens;
+  target.outputTokens += usage.outputTokens;
+  target.totalTokens += usage.totalTokens;
+}
+
+async function writeDebugTrace(input: {
+  kind: 'single' | 'batch';
+  docKey: string;
+  targetLanguage: string;
+  blockCount: number;
+  sourceChars: number;
+  systemPrompt: string;
+  prompt: string;
+  responseText: string;
+}): Promise<void> {
+  if (!isDebugEnabled()) {
+    return;
+  }
+
+  await fs.mkdir(DEBUG_TRACE_DIR, { recursive: true });
+  const safeDocKey = sanitizeForFilename(input.docKey);
+  const filePath = path.join(
+    DEBUG_TRACE_DIR,
+    `${Date.now()}-${input.kind}-${input.targetLanguage}-${safeDocKey}-${randomUUID().slice(0, 8)}.json`
+  );
+  await fs.writeFile(
+    filePath,
+    `${JSON.stringify({
+      kind: input.kind,
+      docKey: input.docKey,
+      targetLanguage: input.targetLanguage,
+      blockCount: input.blockCount,
+      sourceChars: input.sourceChars,
+      systemPrompt: input.systemPrompt,
+      prompt: input.prompt,
+      responseText: input.responseText
+    }, null, 2)}\n`,
+    'utf8'
+  );
+  debugLog(`llm trace saved: ${filePath}`);
+}
+
+function sanitizeForFilename(value: string): string {
+  return value.replace(/[^a-zA-Z0-9._-]+/g, '_').slice(0, 80) || 'doc';
+}
+
+function readPositiveIntEnv(name: string): number | undefined {
+  const raw = process.env[name];
+  if (!raw) {
+    return undefined;
+  }
+
+  const value = Number(raw);
+  return Number.isInteger(value) && value > 0 ? value : undefined;
 }

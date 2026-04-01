@@ -1,6 +1,6 @@
 # Advanced
 
-This page covers the Git-first execution model behind DocPlaybook: how translation stays block-aware without relying on hidden runtime baselines.
+This page covers the state-driven execution model behind DocPlaybook: how translation stays block-aware without depending on Git before/after baselines.
 
 ## Translate model
 
@@ -9,35 +9,35 @@ DocPlaybook keeps block-level structure but uses article-level translation reque
 ### How it works
 
 1. Parse the current source Markdown into blocks.
-2. Read the same source file from Git `HEAD`.
-3. Compare the two source snapshots and find changed translatable blocks.
-4. Read the current target document, if it exists.
-5. Reuse unchanged target blocks when source and target shapes still align.
-6. Send one translation request for the target article.
-7. Split the returned result by block id and write only the updated target positions.
+2. Compute a source hash for the current source file.
+3. Compare that hash with the last saved hash for each target document.
+4. Skip the target when the source hash is unchanged and the target already exists.
+5. Read the current target document, if it exists.
+6. Send one translation request for the target article when the source changed or the target is missing.
+7. Split large articles into smaller batch requests when needed.
+8. Reassemble the translated result and write the refreshed target document safely.
 
 ### Why this model
 
-- Git is the only before/after authority, so the change source is easy to inspect and review.
-- Block-level diff keeps replacements precise.
+- Source-hash state makes the "should I process this file?" decision very cheap.
 - One request per target article reduces repeated prompt overhead.
 - Article-level concurrency is easier to reason about than block-level concurrency.
+- Large documents can be chunked without changing the top-level "one target article" mental model.
 
 ## Learn model
 
-`docplaybook learn` is also Git-first.
+`docplaybook learn` is also state-driven.
 
-For each changed translated file, DocPlaybook:
+For each target document, DocPlaybook:
 
-1. reads the target file from Git `HEAD`
-2. reads the current working tree version
-3. parses both into Markdown blocks
-4. extracts changed translatable blocks when the shapes still align
-5. asks the LLM which edits are reusable guidance
-6. writes reusable cross-language rules to `playbook.md`
-7. writes reusable target-language rules to `memories/<lang>.md`
+1. checks whether the current target hash was already learned
+2. reads the current source document
+3. reads the current target document
+4. asks the LLM which observations are reusable guidance
+5. writes reusable cross-language rules to `playbook.md`
+6. writes reusable target-language rules to `memories/<lang>.md`
 
-If block structure changed too much, the file is skipped for safety instead of trying to infer unstable alignments.
+This makes learn simpler, but also means it is closer to "extract rules from the current source/target pair" than "reconstruct the exact reviewer diff".
 
 ## Bootstrap model
 
@@ -49,18 +49,18 @@ It:
 - builds a first global playbook
 - builds a first language memory for each selected locale
 
-Bootstrap does not create hidden baseline state. It only updates the Markdown memory files inside the repo.
+Bootstrap does not create complex hidden baselines. It only updates the Markdown memory files inside the repo.
 
 ## Safety model
 
 The current design is intentionally simple:
 
-- Git tracks source and target file history
+- `.docplaybook/state/*` tracks whether a source or target version was already processed
 - Markdown block parsing finds structural units
 - the LLM judges semantic meaning and reusable guidance
 - memory files persist long-term project knowledge
 
-There is no extra runtime directory to keep in sync across branches or teammates.
+There is no Git baseline reconstruction step for `translate` or `learn`.
 
 ## Related pages
 

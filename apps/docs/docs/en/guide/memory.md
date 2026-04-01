@@ -59,9 +59,9 @@ That combined context becomes the reusable translation standard for the current 
 
 When a human edits a translated document, the learning flow:
 
-1. compares the edited target file in Git `HEAD` with the current working tree version
-2. extracts changed translatable blocks when block shapes still align
-3. asks the LLM which edits are reusable corrections and which should be ignored
+1. checks whether the current target file hash has already been learned
+2. reads the current source document and current target document
+3. asks the LLM which observations are reusable guidance and which should be ignored
 4. updates `playbook.md` with language-agnostic lessons
 5. updates `memories/<target>.md` with language-specific terminology and style notes
 

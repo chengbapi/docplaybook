@@ -2,6 +2,8 @@ import path from 'node:path';
 import type { AppConfig, DocSet, DocumentRef, LayoutKind } from '../types.js';
 import { assertNever, sha256 } from '../utils.js';
 import {
+  isRspressI18nJsonPath,
+  isRspressMetadataJsonPath,
   getSupportedMarkdownExtension,
   stripSupportedMarkdownExtension
 } from '../markdown/files.js';
@@ -86,12 +88,13 @@ class DocusaurusLayoutAdapter implements LayoutAdapter {
 
     for (const relativePath of files) {
       const extension = getSupportedMarkdownExtension(relativePath);
-      if (!relativePath.startsWith('docs/') || !extension) {
+      const isRspressJson = isRspressMetadataJsonPath(relativePath);
+      if (!relativePath.startsWith('docs/') || (!extension && !isRspressJson)) {
         continue;
       }
 
       const docRelativePath = relativePath.slice('docs/'.length);
-      const docKey = stripSupportedMarkdownExtension(relativePath);
+      const docKey = extension ? stripSupportedMarkdownExtension(relativePath) : relativePath;
       const source: DocumentRef = {
         language: config.sourceLanguage,
         relativePath,
@@ -143,17 +146,13 @@ class RspressLayoutAdapter implements LayoutAdapter {
 
     for (const relativePath of files) {
       const extension = getSupportedMarkdownExtension(relativePath);
-      if (!relativePath.startsWith('docs/') || !extension) {
+      const isRspressJson = isRspressMetadataJsonPath(relativePath);
+      const isRspressI18n = isRspressI18nJsonPath(relativePath);
+      if ((!relativePath.startsWith('docs/') && !isRspressI18n) || (!extension && !isRspressJson && !isRspressI18n)) {
         continue;
       }
 
-      const docRelativePath = relativePath.slice('docs/'.length);
-      const sourceDocRelativePath = this.getSourceDocRelativePath(docRelativePath, config.sourceLanguage);
-      if (!sourceDocRelativePath) {
-        continue;
-      }
-
-      const docKey = stripSupportedMarkdownExtension(relativePath);
+      const docKey = extension ? stripSupportedMarkdownExtension(relativePath) : relativePath;
       const source: DocumentRef = {
         language: config.sourceLanguage,
         relativePath,
@@ -162,19 +161,42 @@ class RspressLayoutAdapter implements LayoutAdapter {
         exists: true
       };
 
-      const targets = Object.fromEntries(
-        config.targetLanguages.map((language) => {
-          const targetRelativePath = path.posix.join('docs', language, sourceDocRelativePath);
-          const target: DocumentRef = {
-            language,
-            relativePath: targetRelativePath,
-            absolutePath: path.join(workspaceRoot, targetRelativePath),
-            isSource: false,
-            exists: fileSet.has(targetRelativePath)
-          };
-          return [language, target];
-        })
-      );
+      let targets: Record<string, DocumentRef>;
+
+      if (isRspressI18n) {
+        targets = Object.fromEntries(
+          config.targetLanguages.map((language) => {
+            const target: DocumentRef = {
+              language,
+              relativePath,
+              absolutePath: path.join(workspaceRoot, relativePath),
+              isSource: false,
+              exists: fileSet.has(relativePath)
+            };
+            return [language, target];
+          })
+        );
+      } else {
+        const docRelativePath = relativePath.slice('docs/'.length);
+        const sourceDocRelativePath = this.getSourceDocRelativePath(docRelativePath, config.sourceLanguage);
+        if (!sourceDocRelativePath) {
+          continue;
+        }
+
+        targets = Object.fromEntries(
+          config.targetLanguages.map((language) => {
+            const targetRelativePath = path.posix.join('docs', language, sourceDocRelativePath);
+            const target: DocumentRef = {
+              language,
+              relativePath: targetRelativePath,
+              absolutePath: path.join(workspaceRoot, targetRelativePath),
+              isSource: false,
+              exists: fileSet.has(targetRelativePath)
+            };
+            return [language, target];
+          })
+        );
+      }
 
       docSets.push({
         id: sha256(docKey).slice(0, 16),

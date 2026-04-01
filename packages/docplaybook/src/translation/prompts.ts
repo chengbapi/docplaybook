@@ -1,4 +1,9 @@
-import type { DocumentSnapshot, ManualCorrection, TranslationContext } from '../types.js';
+import type {
+  BootstrapExample,
+  LearnCandidate,
+  ManualCorrection,
+  TranslationContext
+} from '../types.js';
 
 export function buildTranslationSystemPrompt(context: TranslationContext): string {
   return [
@@ -126,37 +131,131 @@ export function buildMemoryUpdatePrompt(input: {
   ].join('\n');
 }
 
-export function buildRewriteJudgePrompt(input: {
+export function buildLearnJudgePrompt(input: {
   sourceLanguage: string;
   targetLanguage: string;
-  generatedTargetSnapshot: DocumentSnapshot;
-  currentTargetSnapshot: DocumentSnapshot;
+  currentPlaybook: string;
+  currentMemory: string;
+  candidates: LearnCandidate[];
 }): string {
-  const generatedBlocks = input.generatedTargetSnapshot.blocks
-    .filter((block) => block.translatable)
-    .map((block, index) => [`## Block ${index + 1}`, '', block.raw.trim()].join('\n'))
-    .join('\n\n');
-  const currentBlocks = input.currentTargetSnapshot.blocks
-    .filter((block) => block.translatable)
-    .map((block, index) => [`## Block ${index + 1}`, '', block.raw.trim()].join('\n'))
-    .join('\n\n');
+  const serializedCandidates = input.candidates.map((candidate) =>
+    [
+      `## Candidate: ${candidate.docKey}`,
+      `Document key: ${candidate.docKey}`,
+      `Source path: ${candidate.sourcePath}`,
+      `Target path: ${candidate.targetPath}`,
+      '',
+      'Current source document:',
+      '```md',
+      candidate.sourceDocument.trim(),
+      '```',
+      '',
+      'Current target document:',
+      '```md',
+      candidate.targetDocument.trim(),
+      '```'
+    ].join('\n')
+  ).join('\n\n');
 
   return [
-    `You evaluate whether edits to a translated ${input.sourceLanguage} -> ${input.targetLanguage} document are a major rewrite.`,
-    'A major rewrite means the human substantially rewrote the translated document, so the edits should not be learned as reusable translation memory.',
-    'A non-major rewrite means the human mostly made localized corrections, terminology fixes, or style adjustments that are safe to learn.',
-    'Be conservative: if the edits look like targeted correction rather than a full rewrite, return false.',
+    `You review translated documentation from ${input.sourceLanguage} to ${input.targetLanguage}.`,
+    'Extract reusable translation guidance from the current source and target documents.',
+    'Write to scope "playbook" only for cross-language reusable guidance.',
+    'Write to scope "memory" only for target-language-specific terminology or style guidance.',
+    'Use scope "ignore" for page-specific content, one-off phrasing, or unclear observations.',
     'Return strict JSON only with this shape:',
-    '{"isMajorRewrite": boolean, "reason": string}',
+    '{"items":[{"docKey":"...","blockIndex":1,"shouldLearn":true,"scope":"memory","category":"terminology","reason":"...","proposedRule":"..."}]}',
     '',
-    'Previously generated translation:',
+    'Current playbook:',
     '```md',
-    generatedBlocks,
+    input.currentPlaybook.trim(),
     '```',
     '',
-    'Current human-edited translation:',
+    `Current ${input.targetLanguage} memory:`,
     '```md',
-    currentBlocks,
-    '```'
+    input.currentMemory.trim(),
+    '```',
+    '',
+    'Document review candidates:',
+    serializedCandidates
+  ].join('\n');
+}
+
+export function buildRuleMergePrompt(input: {
+  scope: 'playbook' | 'memory';
+  sourceLanguage: string;
+  targetLanguage: string;
+  memoryText: string;
+  rules: string[];
+}): string {
+  return [
+    input.scope === 'playbook'
+      ? `You maintain a global translation playbook for ${input.sourceLanguage} source documents across all target languages.`
+      : `You maintain a reusable language memory for ${input.targetLanguage} translations from ${input.sourceLanguage}.`,
+    'Merge the reusable rules below into the current Markdown file.',
+    'Keep the file concise, deduplicated, and written for future LLM prompts.',
+    input.scope === 'playbook'
+      ? 'Keep only language-agnostic reusable guidance.'
+      : 'Keep only target-language-specific reusable guidance.',
+    'If a new rule conflicts with an older rule, keep the new rule and rewrite or remove the old one.',
+    'Do not add fenced code blocks. Return the full updated Markdown file only.',
+    '',
+    'Current file:',
+    '```md',
+    input.memoryText.trim(),
+    '```',
+    '',
+    'New reusable rules:',
+    ...input.rules.map((rule, index) => `${index + 1}. ${rule}`)
+  ].join('\n');
+}
+
+export function buildBootstrapMemoryPrompt(input: {
+  scope: 'playbook' | 'memory';
+  sourceLanguage: string;
+  targetLanguage: string;
+  memoryText: string;
+  examples: BootstrapExample[];
+}): string {
+  const serializedExamples = input.examples.map((example) =>
+    [
+      `## Document: ${example.docKey}`,
+      `Source path: ${example.sourcePath}`,
+      `Target path: ${example.targetPath}`,
+      '',
+      ...example.pairs.flatMap((pair) => [
+        `### Pair ${pair.blockIndex}`,
+        'Source:',
+        '```md',
+        pair.sourceBlock.trim(),
+        '```',
+        '',
+        'Target:',
+        '```md',
+        pair.targetBlock.trim(),
+        '```',
+        ''
+      ])
+    ].join('\n')
+  ).join('\n\n');
+
+  return [
+    input.scope === 'playbook'
+      ? `You are creating a global translation playbook for ${input.sourceLanguage} source documents across all target languages.`
+      : `You are creating a reusable ${input.targetLanguage} translation memory from ${input.sourceLanguage} source documents.`,
+    'Infer concise, reusable guidance from the aligned examples below.',
+    input.scope === 'playbook'
+      ? 'Focus on cross-language voice, protected terms, and translation rules.'
+      : 'Focus on target-language terminology and style preferences.',
+    'Ignore page-specific content details. Keep only reusable rules.',
+    'Return the full Markdown file only, without fenced code blocks.',
+    '',
+    'Current file:',
+    '```md',
+    input.memoryText.trim(),
+    '```',
+    '',
+    'Aligned source/target examples:',
+    serializedExamples
   ].join('\n');
 }

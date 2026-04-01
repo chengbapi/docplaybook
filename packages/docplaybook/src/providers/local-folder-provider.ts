@@ -1,10 +1,13 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import chokidar from 'chokidar';
 import picomatch from 'picomatch';
-import type { ProviderEvent } from '../types.js';
+import type { LayoutKind } from '../types.js';
 import { pathExists } from '../utils.js';
-import { isSupportedMarkdownPath } from '../markdown/files.js';
+import {
+  isRspressI18nJsonPath,
+  isRspressMetadataJsonPath,
+  isSupportedMarkdownPath
+} from '../markdown/files.js';
 
 export class LocalFolderProvider {
   private readonly ignoreMatcherPromise: Promise<(relativePath: string) => boolean>;
@@ -18,7 +21,28 @@ export class LocalFolderProvider {
 
   public async scanMarkdownFiles(): Promise<string[]> {
     const files: string[] = [];
-    await this.scanDir(this.workspaceRoot, files, await this.ignoreMatcherPromise);
+    await this.scanDir(
+      this.workspaceRoot,
+      files,
+      await this.ignoreMatcherPromise,
+      (relativePath) => isSupportedMarkdownPath(relativePath)
+    );
+    return files;
+  }
+
+  public async scanTranslatableFiles(layoutKind: LayoutKind): Promise<string[]> {
+    const files: string[] = [];
+    await this.scanDir(
+      this.workspaceRoot,
+      files,
+      await this.ignoreMatcherPromise,
+      (relativePath) =>
+        isSupportedMarkdownPath(relativePath)
+        || (
+          layoutKind === 'rspress'
+          && (isRspressMetadataJsonPath(relativePath) || isRspressI18nJsonPath(relativePath))
+        )
+    );
     return files;
   }
 
@@ -36,38 +60,11 @@ export class LocalFolderProvider {
     return pathExists(path.join(this.workspaceRoot, relativePath));
   }
 
-  public async watch(
-    onEvent: (event: ProviderEvent) => Promise<void> | void
-  ): Promise<() => Promise<void>> {
-    const ignored = await this.ignoreMatcherPromise;
-    const watcher = chokidar.watch(this.workspaceRoot, {
-      ignored: (watchedPath) => ignored(this.toRelativePath(watchedPath)),
-      ignoreInitial: true,
-      persistent: true
-    });
-
-    watcher.on('all', (kind, absolutePath) => {
-      const relativePath = this.toRelativePath(absolutePath);
-      if (!isSupportedMarkdownPath(relativePath)) {
-        return;
-      }
-
-      void onEvent({
-        kind: kind === 'add' || kind === 'change' || kind === 'unlink' ? kind : 'change',
-        absolutePath,
-        relativePath
-      });
-    });
-
-    return async () => {
-      await watcher.close();
-    };
-  }
-
   private async scanDir(
     dir: string,
     files: string[],
-    ignored: (relativePath: string) => boolean
+    ignored: (relativePath: string) => boolean,
+    include: (relativePath: string) => boolean
   ): Promise<void> {
     const entries = await fs.readdir(dir, { withFileTypes: true });
 
@@ -80,11 +77,11 @@ export class LocalFolderProvider {
       }
 
       if (entry.isDirectory()) {
-        await this.scanDir(absolutePath, files, ignored);
+        await this.scanDir(absolutePath, files, ignored, include);
         continue;
       }
 
-      if (entry.isFile() && isSupportedMarkdownPath(relativePath)) {
+      if (entry.isFile() && include(relativePath)) {
         files.push(relativePath);
       }
     }

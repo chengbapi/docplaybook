@@ -1,17 +1,17 @@
 # はじめに
 
-## DocPlaybook が行うこと
+## DocPlaybookが行うこと
 
-`DocPlaybook` は、ドキュメントチームがローカルの非公開なランタイム状態ではなく、Git ファーストなワークフローで多言語の Markdown ドキュメントを維持するのを支援します。
+`DocPlaybook` は、不透明なGit式の前後比較ベースではなく、状態駆動のワークフローを用いてドキュメントチームが多言語のMarkdownドキュメントを維持するのを支援します。
 
-- 任意の LLM プロバイダとモデルを選択できます。
-- Git 管理されたソース差分を使って、再生成が必要な翻訳ブロックだけを更新します。
+- 使用するLLMプロバイダーとモデルを選択できます。
+- source-hashトラッキングを使って、変更のないドキュメントをスキップし、古くなったまたは欠落している翻訳を更新します。
 - レビューから学習し、用語、トーン、スタイルの判断を再利用します。
-- あいまいなモデル出力ではなく、具体的なリント風の指摘で翻訳をレビューします。
+- あいまいなモデル出力の代わりに、具体的なヘルスチェックの所見で翻訳をレビューします。
 
-## 最もサポートされている統合
+## 最もよくサポートされている統合
 
-既にドキュメントサイトがある場合は、[Quick Start](/guide/quick-start) から始めてください。
+すでにドキュメントサイトをお持ちの場合は、[Quick Start](/guide/quick-start) から始めてください。
 
 <div style="display:flex;flex-wrap:wrap;gap:12px;margin:14px 0 28px;">
   <a href="/docplaybook/guide/quick-start" style="display:flex;align-items:center;gap:10px;padding:10px 14px;border:1px solid #e5e7eb;border-radius:14px;text-decoration:none;color:inherit;">
@@ -28,12 +28,12 @@
   </a>
 </div>
 
-- `Docusaurus` は公式ドキュメントの i18n 構成に従います: `i18n/<locale>/docusaurus-plugin-content-docs/current/...`
-- `Rspress` 2.x では `docs/` 配下に言語ディレクトリを置きます。既定言語は `docs/en/...`、他の言語は `docs/<locale>/...` です
-- `VitePress` はローカライズされたドキュメントの一般的なレイアウトに従います: `docs/<locale>/...`
-- それらのいずれにも該当しない場合、`DocPlaybook` は一般的な Markdown プロジェクト向けに `sibling` モードにフォールバックします。
+- `Docusaurus` は公式のドキュメント i18n 構成に従います: `i18n/<locale>/docusaurus-plugin-content-docs/current/...`
+- `Rspress` 2.x は `docs/` 以下に言語ディレクトリを使用します: デフォルト言語は `docs/en/...` にあり、その他のロケールは `docs/<locale>/...` に置かれます。
+- `VitePress` は一般的なローカライズされたドキュメント構成 `docs/<locale>/...` に従います。
+- これらのどれにも当てはまらない場合、`DocPlaybook` は汎用のMarkdownプロジェクト向けに `sibling` モードにフォールバックします。
 
-## 一般的なワークフロー
+## 典型的なワークフロー
 
 ドキュメントプロジェクトにインストールし、既にドキュメントが存在する場所で初期化してください。
 
@@ -55,7 +55,7 @@ yarn exec docplaybook init .</code></pre>
   </div>
 </div>
 
-次に通常のワークフローを実行します:
+その後、通常のワークフローを実行します：
 
 ```bash
 pnpm exec docplaybook bootstrap . --langs en,ja
@@ -63,10 +63,9 @@ pnpm exec docplaybook .
 pnpm exec docplaybook lint .
 ```
 
-## 次に進むべき内容
+## 次のステップ
 
-- [Quick Start](/guide/quick-start): インストール、初期化、プロバイダ設定、レイアウト規約について
-- [Quick Start](/guide/quick-start): インストール、初期化、ブートストラップ、およびコマンドについて
-- [Project Workflow](/guide/workflow): スクリプト、フック、CI パターンについて
-- [Advanced](/guide/advanced): Git ベースの翻訳挙動と安全性に関するトレードオフについて
-- [CI](/guide/ci): 共有プロバイダと共有の翻訳予算を使いたい場合
+- インストール、初期化、ブートストラップ、コマンドの基本については [Quick Start](/guide/quick-start) を参照してください
+- スクリプト、フック、CIパターンについては [Project Workflow](/guide/workflow) を参照してください
+- 状態駆動の翻訳挙動と安全性のトレードオフについては [Advanced](/guide/advanced) を参照してください
+- 共有のプロバイダーと共通の翻訳予算を利用したい場合は [CI](/guide/ci) を参照してください

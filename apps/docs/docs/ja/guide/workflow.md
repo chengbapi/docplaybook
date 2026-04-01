@@ -1,28 +1,32 @@
-# プロジェクトワークフロー
+# プロジェクトのワークフロー
 
-インストールと初期化の後、ほとんどのチームは DocPlaybook を再現可能なプロジェクトワークフローに組み込みます。
+インストールと初期化の後、ほとんどのチームは DocPlaybook を繰り返し使えるプロジェクトワークフローにします。
 
 各モデルの相互作用を視覚的に説明したい場合は、[Flow Demo](/guide/demo) を参照してください。
 
-## 推奨ローカルループ
+## 推奨されるローカルループ
 
-日々の作業では、最も有用なローカルでの順序は次のとおりです:
+日々の作業では、最も有用な明示的なローカルの順序は次のとおりです：
+
+1. `docplaybook translate .`
+2. `docplaybook lint . --fix`
+
+これは次の理由で有効です：
+
+- `translate` はソースが変更されたときやターゲットが存在しないときにターゲットドキュメントを更新します
+- `lint --fix` はプルリクエスト前に安全な翻訳の問題を修正します
+- `learn` は意図的に実行されるもので、ソースの変更ごとにではなくレビュアーの編集後に実行できます
+
+レビュアーが翻訳を編集した場合は、別のローカル手順として `docplaybook learn .` を実行してください。これにより `playbook.md` と `memories/<lang>.md` が更新されるため、これらの変更は他のソースファイルと同様にレビューする必要があります。
+
+デフォルトコマンド `docplaybook .` は現在、次を実行します：
 
 1. `docplaybook learn .`
 2. `docplaybook translate .`
-3. `docplaybook lint . --fix`
 
-この方法がうまく機能する理由は次のとおりです:
+## package スクリプトの追加
 
-- `learn` は再利用可能なプロジェクトガイダンスを `playbook.md` と `memories/<lang>.md` に書き込みます
-- `translate` は Git で追跡されたソースの変更から対象ドキュメントを更新します
-- `lint --fix` はプルリクエスト前に安全な翻訳上の問題を修正します
-
-`learn` はプロジェクトガイダンスファイルを変更するためローカル開発で実行すべきで、これらはコードレビューで確認されるべきです。
-
-## パッケージスクリプトの追加
-
-ほとんどのチームは最初にパッケージスクリプトを追加します:
+ほとんどのチームはまず package スクリプトを追加します：
 
 ```json
 {
@@ -30,30 +34,30 @@
     "docs:translate": "docplaybook translate .",
     "docs:learn": "docplaybook learn .",
     "docs:lint": "docplaybook lint . --fix",
-    "docs:i18n": "docplaybook learn . && docplaybook translate . && docplaybook lint . --fix"
+      "docs:sync": "docplaybook translate . && docplaybook lint . --fix"
   }
 }
 ```
 
-その後、パッケージマネージャーでそれらを実行します:
+その後、パッケージマネージャーでそれらを実行します：
 
 ```bash
-pnpm docs:i18n
-npm run docs:i18n
-yarn docs:i18n
+pnpm docs:sync
+npm run docs:sync
+yarn docs:sync
 ```
 
 ## 手動での使用
 
-一般的な手動パターンは次のとおりです:
+一般的な手動パターンは次のとおりです：
 
-- run `docplaybook bootstrap . --langs en,ja` once after `init` if the repo already has translated docs
-- run `docplaybook learn .` after reviewers have edited translations
-- run `docplaybook translate .` when source docs changed
-- run `docplaybook lint . --fix` before merge
-- run `docplaybook lint . --scope all` when you want a full workspace review instead of only changed files
+- リポジトリに既に翻訳済みのドキュメントがある場合、`init` の後に一度 `docplaybook bootstrap . --langs en,ja` を実行する
+- レビュアーが翻訳を編集した後に `docplaybook learn .` を実行する
+- ソースドキュメントが変更されたときに `docplaybook translate .` を実行する
+- マージ前に `docplaybook lint . --fix` を実行する
+- 変更されたファイルのみではなくワークスペース全体のレビューを行いたい場合は `docplaybook lint . --scope all` を実行する
 
-1つのブランチで選択したロケールのみを作業したい場合は、`--langs` を追加します:
+一つのブランチで選択したロケールだけ作業したい場合は、`--langs` を追加してください：
 
 ```bash
 pnpm exec docplaybook translate . --langs ja
@@ -63,16 +67,12 @@ pnpm exec docplaybook lint . --fix --langs ja
 
 ## Git フック
 
-軽量なフックのパターンとして、push 前に lint を実行する方法があります:
+軽量なフックパターンとしては、プッシュ前に lint を実行する方法があります：
 
 ```bash
 pnpm exec docplaybook lint . --fix
 ```
 
-コードレビューが始まる前に明示的な指摘を得たい場合に適しています。
+これは、コードレビューが始まる前に明確な指摘事項を得たい場合に適しています。
 
 ## CI
-
-CI は通常、チームが共有プロバイダ、共有モデル、共有の翻訳予算を集中管理する場所です。
-
-CI 固有のセットアップ、プロバイダ戦略、例のフローについては [CI](/guide/ci) を参照してください。

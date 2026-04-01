@@ -1,0 +1,28 @@
+{
+  "id": "bootstrap_conflicting_terms_should_be_conservative",
+  "category": "bootstrap",
+  "kind": "bad",
+  "title": "Bootstrap should stay conservative when history conflicts",
+  "command": "docplaybook bootstrap . --langs en",
+  "why_this_case_exists": "Historical docs are often noisy. Bootstrap should avoid writing overconfident rules from weak or conflicting evidence.",
+  "setup": [
+    "Aligned bilingual docs exist.",
+    "The same source term is translated in multiple conflicting ways across the corpus.",
+    "There is not enough evidence to choose one strong global rule safely."
+  ],
+  "input": {
+    "conflicting_term": "知识库",
+    "observed_translations": [
+      "Wiki",
+      "Knowledge Base"
+    ]
+  },
+  "expected": [
+    "The resulting memory is cautious or leaves the term unresolved.",
+    "The output avoids strong project-wide claims from weak evidence."
+  ],
+  "should_not_happen": [
+    "The tool hard-codes one strong rule from obviously conflicting examples.",
+    "The wording sounds more confident than the evidence supports."
+  ]
+}

@@ -91,26 +91,9 @@ export interface DocumentSnapshot {
   updatedAt: string;
   blocks: MarkdownBlock[];
   tail: string;
-}
-
-export interface TargetRuntimeState {
-  language: string;
-  generated?: DocumentSnapshot;
-  accepted?: DocumentSnapshot;
-}
-
-export interface DocSetRuntimeState {
-  docSetId: string;
-  source?: DocumentSnapshot;
-  targets: Record<string, TargetRuntimeState>;
-  updatedAt: string;
-}
-
-export interface WorkspaceRuntimeState {
-  version: 1;
-  workspaceId: string;
-  updatedAt: string;
-  docSets: Record<string, DocSetRuntimeState>;
+  format?: 'markdown' | 'rspress-json' | 'rspress-i18n-json';
+  jsonRoot?: unknown;
+  jsonPointers?: string[][];
 }
 
 export interface TranslationContext {
@@ -127,6 +110,43 @@ export interface ManualCorrection {
   sourceBlock: string;
   previousTranslation: string;
   correctedTranslation: string;
+}
+
+export interface LearnCandidate {
+  docKey: string;
+  targetLanguage: string;
+  targetPath: string;
+  sourcePath: string;
+  sourceDocument: string;
+  targetDocument: string;
+}
+
+export interface LearnJudgement {
+  docKey: string;
+  blockIndex: number;
+  shouldLearn: boolean;
+  scope: 'playbook' | 'memory' | 'ignore';
+  category:
+    | 'terminology'
+    | 'style'
+    | 'protected_term'
+    | 'format'
+    | 'one_off'
+    | 'rewrite'
+    | 'other';
+  reason: string;
+  proposedRule: string;
+}
+
+export interface BootstrapExample {
+  docKey: string;
+  sourcePath: string;
+  targetPath: string;
+  pairs: Array<{
+    blockIndex: number;
+    sourceBlock: string;
+    targetBlock: string;
+  }>;
 }
 
 export interface ModelUsageStats {
@@ -194,10 +214,4 @@ export interface LintResult {
   scores: LintScores;
   findings: LintFinding[];
   usage: ModelUsageStats;
-}
-
-export interface ProviderEvent {
-  kind: 'add' | 'change' | 'unlink';
-  absolutePath: string;
-  relativePath: string;
 }

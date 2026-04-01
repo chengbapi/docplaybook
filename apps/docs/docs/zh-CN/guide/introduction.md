@@ -1,17 +1,17 @@
 # 介绍
 
-## DocPlaybook 的功能
+## DocPlaybook 能做什么
 
-`DocPlaybook` 帮助文档团队使用以 Git 为先的工作流来维护多语言 Markdown 文档，而不是依赖隐藏的本地运行时状态。
+`DocPlaybook` 帮助文档团队以状态驱动的工作流维护多语言 Markdown 文档，而不是使用不透明的 Git 风格的前/后基线。
 
-- 选择你自己的 LLM 提供商和模型。
-- 使用 Git 跟踪的源差异，仅更新需要重新生成的翻译块。
+- 自行选择 LLM 提供商和模型。
+- 使用源哈希跟踪以跳过未更改的文档，并刷新过时或缺失的翻译。
 - 从审校中学习并重用术语、语气和风格决策。
-- 使用具体的类 lint 检查结果来审查翻译，而不是依赖模糊的模型输出。
+- 通过具体的健康检查结果审阅翻译，而不是依赖模糊的模型输出。
 
 ## 最佳支持的集成
 
-如果你已经有文档站点，请从 [快速开始](/guide/quick-start) 开始。
+如果你已有文档站点，请从 [快速开始](/guide/quick-start) 开始。
 
 <div style="display:flex;flex-wrap:wrap;gap:12px;margin:14px 0 28px;">
   <a href="/docplaybook/guide/quick-start" style="display:flex;align-items:center;gap:10px;padding:10px 14px;border:1px solid #e5e7eb;border-radius:14px;text-decoration:none;color:inherit;">
@@ -29,13 +29,13 @@
 </div>
 
 - `Docusaurus` 遵循官方文档 i18n 结构：`i18n/<locale>/docusaurus-plugin-content-docs/current/...`
-- `Rspress` 2.x 会把不同语言放在 `docs/` 下的语言目录中：默认语言放在 `docs/en/...`，其他语言放在 `docs/<locale>/...`
-- `VitePress` 在 `docs/<locale>/...` 下遵循常见的本地化文档布局
-- 如果这些都不适用，`DocPlaybook` 将回退到适用于通用 Markdown 项目的 `sibling` 模式。
+- `Rspress` 2.x 在 `docs/` 下使用语言目录：默认语言位于 `docs/en/...`，其他语言位于 `docs/<locale>/...`
+- `VitePress` 遵循常见的本地化文档布局，位于 `docs/<locale>/...`
+- 如果上述都不适用，`DocPlaybook` 会对通用 Markdown 项目回退到 `sibling` 模式。
 
-## 典型工作流程
+## 典型工作流
 
-在你的文档项目中安装，然后在已有文档所在位置初始化它。
+在你的文档项目中安装，然后在已有文档所在位置初始化。
 
 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin:16px 0 20px;">
   <div style="padding:14px 16px;border:1px solid #e5e7eb;border-radius:16px;">
@@ -55,7 +55,7 @@ yarn exec docplaybook init .</code></pre>
   </div>
 </div>
 
-然后运行常规工作流程：
+然后运行常规工作流：
 
 ```bash
 pnpm exec docplaybook bootstrap . --langs en,ja
@@ -65,8 +65,7 @@ pnpm exec docplaybook lint .
 
 ## 下一步
 
-- [快速开始](/guide/quick-start) 了解安装、初始化、提供商设置和布局约定
-- [快速开始](/guide/quick-start) 了解安装、初始化、引导和命令
-- [项目工作流](/guide/workflow) 了解脚本、钩子和 CI 模式
-- [高级](/guide/advanced) 了解基于 Git 的翻译行为和安全权衡
-- [CI](/guide/ci) 如果你希望使用单一共享的提供商和共享的翻译预算
+- [快速开始](/guide/quick-start) 用于安装、初始化、引导和命令基础
+- [项目工作流](/guide/workflow) 用于脚本、钩子和 CI 模式
+- [高级](/guide/advanced) 关于状态驱动的翻译行为和安全权衡
+- [CI](/guide/ci) 如果你希望使用一个共享提供商和一个共享的翻译预算

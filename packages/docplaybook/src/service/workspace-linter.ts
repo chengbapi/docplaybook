@@ -1,5 +1,5 @@
 import type { AppConfig, DocSet, LintFinding, ModelUsageStats } from '../types.js';
-import { parseMarkdownSnapshot, renderSnapshot } from '../markdown/blocks.js';
+import { parseDocumentSnapshot, renderSnapshot } from '../markdown/blocks.js';
 import { MemoryStore } from '../memories/memory-store.js';
 import { LocalFolderProvider } from '../providers/local-folder-provider.js';
 import { QualityLinter } from '../quality/linter.js';
@@ -59,9 +59,10 @@ export class WorkspaceLinter {
     }
 
     for (const docSet of docSets) {
-      const sourceSnapshot = parseMarkdownSnapshot(
+      const sourceSnapshot = parseDocumentSnapshot(
         docSet.source.relativePath,
-        await this.provider.read(docSet.source.relativePath)
+        await this.provider.read(docSet.source.relativePath),
+        { layoutKind: this.config.layout.kind, language: this.config.sourceLanguage }
       );
 
       for (const targetLanguage of targetLanguages) {
@@ -75,9 +76,10 @@ export class WorkspaceLinter {
         }
 
         documents += 1;
-        const targetSnapshot = parseMarkdownSnapshot(
+        const targetSnapshot = parseDocumentSnapshot(
           targetRef.relativePath,
-          await this.provider.read(targetRef.relativePath)
+          await this.provider.read(targetRef.relativePath),
+          { layoutKind: this.config.layout.kind, language: targetLanguage }
         );
 
         const playbookRaw = await this.memoryStore.readPlaybook();

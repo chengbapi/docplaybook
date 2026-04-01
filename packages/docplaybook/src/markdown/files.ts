@@ -16,6 +16,17 @@ export function isSupportedMarkdownPath(relativePath: string): boolean {
   return getSupportedMarkdownExtension(relativePath) !== null;
 }
 
+export function isRspressMetadataJsonPath(relativePath: string): boolean {
+  return (
+    relativePath.startsWith('docs/')
+    && (relativePath.endsWith('/_nav.json') || relativePath.endsWith('/_meta.json'))
+  );
+}
+
+export function isRspressI18nJsonPath(relativePath: string): boolean {
+  return relativePath === 'i18n.json';
+}
+
 export function stripSupportedMarkdownExtension(relativePath: string): string {
   const extension = getSupportedMarkdownExtension(relativePath);
   return extension ? relativePath.slice(0, -extension.length) : relativePath;

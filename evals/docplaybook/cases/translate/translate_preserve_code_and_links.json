@@ -1,0 +1,28 @@
+{
+  "id": "translate_preserve_code_and_links",
+  "category": "translate",
+  "kind": "good",
+  "title": "Translate should preserve code, inline code, and links",
+  "command": "docplaybook translate . --langs en",
+  "why_this_case_exists": "Markdown safety matters as much as language quality. This case verifies that translation updates text without corrupting technical structure.",
+  "setup": [
+    "The repository is a Git repo.",
+    "The source file includes fenced code blocks, inline code, and Markdown links.",
+    "Only one human-language paragraph changed.",
+    "The target file already exists."
+  ],
+  "input": {
+    "changed_source_block": "运行 `docplaybook init` 后，访问 [快速开始](./quick-start.md)。",
+    "surrounding_structure": "fenced code block, inline code token, markdown link"
+  },
+  "expected": [
+    "Only the changed human-language block is regenerated.",
+    "Fenced code stays intact.",
+    "Inline code and link URLs are preserved."
+  ],
+  "should_not_happen": [
+    "Code fences or code contents are rewritten.",
+    "Markdown links lose URLs or formatting.",
+    "Unrelated blocks are regenerated."
+  ]
+}

@@ -1,0 +1,65 @@
+[
+  {
+    "type": "section-header",
+    "label": "はじめに"
+  },
+  {
+    "type": "file",
+    "name": "introduction",
+    "label": "概要"
+  },
+  {
+    "type": "file",
+    "name": "quick-start",
+    "label": "クイックスタート"
+  },
+  {
+    "type": "divider"
+  },
+  {
+    "type": "section-header",
+    "label": "ワークフロー"
+  },
+  {
+    "type": "file",
+    "name": "workflow",
+    "label": "プロジェクトのワークフロー"
+  },
+  {
+    "type": "file",
+    "name": "demo",
+    "label": "デモ"
+  },
+  {
+    "type": "file",
+    "name": "ci",
+    "label": "CI"
+  },
+  {
+    "type": "divider"
+  },
+  {
+    "type": "section-header",
+    "label": "上級者向け"
+  },
+  {
+    "type": "file",
+    "name": "advanced",
+    "label": "上級者向け"
+  },
+  {
+    "type": "file",
+    "name": "config",
+    "label": "設定"
+  },
+  {
+    "type": "file",
+    "name": "agents",
+    "label": "エージェント"
+  },
+  {
+    "type": "file",
+    "name": "memory",
+    "label": "メモリ"
+  }
+]

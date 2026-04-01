@@ -52,6 +52,7 @@ During `init`, DocPlaybook will:
 - ask for target languages
 - create `.docplaybook/config.json`
 - create `.docplaybook/memories/*.md`
+- create `.docplaybook/playbook.md`
 
 If translated target files already exist, `init` will also suggest running `bootstrap` so the first playbook and language memories can be inferred from those existing docs.
 
@@ -85,8 +86,8 @@ docs/guide/intro.md
 i18n/en/docusaurus-plugin-content-docs/current/guide/intro.md
 
 rspress:
-docs/guide/intro.md
 docs/en/guide/intro.md
+docs/ja/guide/intro.md
 
 vitepress:
 docs/guide/intro.md
@@ -147,6 +148,11 @@ pnpm exec docplaybook .
 
 Use this when you want the normal project workflow without deciding each sub-step manually.
 
+Today that default workflow is:
+
+1. `learn`
+2. `translate`
+
 ### `docplaybook bootstrap`
 
 Build the first memory files from existing translated docs already tracked in the repo.
@@ -167,6 +173,8 @@ pnpm exec docplaybook translate .
 
 Use this when you only want translation output updated from the source docs.
 
+`translate` is state-driven: if the source hash for a target document did not change and the target already exists, DocPlaybook skips it.
+
 To process only one or two target languages:
 
 ```bash
@@ -184,7 +192,7 @@ pnpm exec docplaybook learn .
 
 Use this when reviewers have updated translated docs and you want DocPlaybook to reuse those corrections later.
 
-`learn` is Git-first: it compares the translated file in `HEAD` with the current working tree version, then asks the LLM which edits should become reusable guidance.
+`learn` is state-driven: it skips target files whose content hash has not changed since the last learn run, and for changed targets it extracts reusable guidance from the current source/target pair.
 
 You can also limit learning to selected target languages:
 

@@ -1,8 +1,8 @@
 # docplaybook
 
-`docplaybook` 是一个面向 Markdown 文档翻译的 Git-first CLI 工具。
+`docplaybook` 是一个面向 Markdown 文档翻译的 CLI 工具。
 
-它会扫描一个 workspace，将文件归并为多个文档集合，基于 Git 跟踪源文和译文的变化，按需执行增量翻译同步，并从人工编辑中学习可复用的翻译经验。
+它会扫描一个 workspace，将文件归并为多个文档集合，基于本地 state 跟踪源文和译文是否需要处理，按需执行增量翻译同步，并从当前 source/target 对照中学习可复用的翻译经验。
 
 ## 安装
 
@@ -87,7 +87,7 @@ docplaybook ./examples/sample-workspace
 docplaybook ./examples/sample-workspace --verbose
 ```
 
-查看底层调试信息，例如 block index、prompt 大小和请求队列状态：
+查看底层调试信息，例如 prompt 大小、请求排队时间和模型调用状态：
 
 ```bash
 docplaybook ./examples/sample-workspace --debug
@@ -168,12 +168,12 @@ docplaybook lint ./examples/sample-workspace --fix
 
 - 将多个文档归并为多个 doc set
 - 支持四种布局：`sibling`、`docusaurus`、`rspress`、`vitepress`
-- 将 Markdown 拆成 block，只重译发生变化且可翻译的 block
+- 将 Markdown 拆成 block，以便安全地识别可翻译内容并写回原位置
 - 每个 `source -> target` 目标文章只发一次翻译请求，而不是对 block 多次调用模型
 - 保留 frontmatter、代码块、HTML block、分隔线等不可翻译内容
-- 通过 Git 里的译文 before/after 变化，让 LLM 判断哪些人工修改值得沉淀进项目级翻译 playbook
+- 从当前 source/target 文档对中提炼可复用规则，并沉淀进项目级翻译 playbook
 - 按 memory 对现有译文做多维度评分和问题检查，并支持 `lint --fix`
-- 不依赖仓库外的隐式运行态状态；Git 变更和仓库内 memory 文件就是系统的唯一长期依据
+- 不依赖仓库外的复杂 baseline；`.docplaybook/state` 和仓库内 memory 文件就是系统的长期依据
 
 ## Layout
 
@@ -207,33 +207,35 @@ docplaybook lint ./examples/sample-workspace --fix
 
 当前版本的同步策略是：
 
-- 保留 block 级逻辑，用它来判断哪些内容需要重译，以及最终如何按原位置回填
-- `translate` 直接比较源文件在 `HEAD` 中的内容和当前工作区内容，找出发生变化的 source block
-- 未变化的 source block 会尽量复用当前目标文件里对应的 block，不再依赖额外的本地 baseline
-- 但翻译调用是“按目标文章”进行的：一篇 `guide.en.md` 只发一次模型请求
-- 同一篇文章里需要重译的多个 block 会被打包成一个整体 payload，一次翻译返回后再按 block id 拆回目标位置
+- 保留 block 级结构，用它来识别可翻译内容并安全写回
+- `translate` 对每个目标文件记录 source hash
+- 如果 source hash 没变且目标文件已存在，就直接跳过
+- 如果 source hash 变了或目标文件缺失，就整篇刷新这个 target document
+- 翻译调用仍然是“按目标文章”进行的：一篇 `guide.en.md` 只发一次模型请求
+- 同一篇文章里的可翻译内容会按文章级请求组织；必要时会按批次切分，但仍然以同一篇目标文章为单位安全写回
 - 并发也只按“文章任务”计算：`concurrency.maxConcurrentRequests` 表示同时有多少篇目标文章在翻译
 
 这意味着：
 
-- 增量更新仍然是 block 级的，不会因为局部改动就整篇重写
-- 但模型调用次数不再随着 block 数量线性增加，更适合长文档
+- 增量判断是文档级的，是否处理由 source hash 决定
+- 文档结构仍然是 block-aware 的，所以 frontmatter、Markdown 结构和框架特有文件可以被安全处理
+- 模型调用次数不再随着 block 数量线性增加，更适合长文档
 
 默认入口 `docplaybook <workspace>` 会先执行 `learn`，再执行 `translate`。
-这样可以先吸收已有人工修正，降低同时改动源文和译文时丢失人工修改的风险。
+这适合“本地先吸收已有译文修正，再同步源文变化”的日常循环。
 
-`learn` 的工作方式也已经改成 Git-first：
+`learn` 当前是 state-driven 的：
 
-- 只看 Git 跟踪到的目标译文文件改动
-- 读取目标文件在 `HEAD` 中的 before 和当前工作区里的 after
-- 将 before/after 解析为 block 后，提取发生变化的 translatable block
-- 把这些 block 级修订交给 LLM 判断，决定哪些规则应该写入全局 `playbook.md`，哪些应该写入语言级 memory
+- 对每个目标译文文件记录 learned target hash
+- target hash 没变时跳过，避免重复学习同一个版本
+- target hash 变了时，读取当前 source 和当前 target
+- 让 LLM 判断哪些观察应该写入全局 `playbook.md`，哪些应该写入语言级 memory
 
 这意味着：
 
-- 不需要仓库外的 runtime 或 baseline 目录
-- 切分支时只要 Git 状态是正确的，`learn` 和 `translate` 的判断基线就是清晰可追踪的
-- 团队协作时真正共享的状态就是仓库里的源文、译文和 memory 文件
+- 不需要复杂的 before/after baseline 目录
+- 同一个 target 版本只会 learn 一次，除非你显式 `--force`
+- 团队协作时真正共享的长期知识仍然是仓库里的源文、译文和 memory 文件
 
 ## Lint
 
@@ -250,21 +252,21 @@ docplaybook lint ./examples/sample-workspace --fix
 
 每条问题都会尽量明确到具体目标 block；如果加上 `--fix`，会自动回写那些可以安全按 block 替换的修复建议。
 
-## 为什么现在是 Git-first
+## State 驱动
 
-新版主流程不再依赖仓库外的 runtime baseline。
+主流程优先使用 workspace 内的本地 state，而不是 Git before/after baseline。
 
 系统只依赖两类长期数据：
 
-- Git 能够提供的 before / after 文件内容
+- `.docplaybook/state/*` 中的 source/target hash
 - 仓库内的 `playbook.md` 和 `memories/<lang>.md`
 
 这样设计有几个好处：
 
-- 变化来源是可追踪、可 review 的
-- 切分支时不容易被本地隐式状态污染
-- 团队协作时共享状态只存在于仓库里，而不是每个人机器上的私有目录
-- 产品心智模型更简单：Git 负责跟踪变化，LLM 负责判断变化的语义，memory 文件负责持久化经验
+- 增量判断足够简单：变了就处理，没变就跳过
+- 不需要维护复杂的 Git diff 或额外快照基线
+- 本地 state 只负责“是否需要处理”，memory 文件负责持久化长期经验
+- `lint --scope changed` 仍然可以单独保持 Git-aware，用于 CI 和 pre-push 场景
 
 ## 配置
 
@@ -398,19 +400,20 @@ DocPlaybook 会维护两层 AI 生成的翻译规则文件：
 
 这也是这个工具和简单“翻译变更文件”脚本之间最大的区别。初稿当然重要，但更重要的是长期保留并复用人工修正。
 
-当人工编辑某个翻译文档时，agent 会比较：
+当人工编辑某个翻译文档时，agent 会读取：
 
-- Git `HEAD` 中的目标译文
-- 当前工作区里的目标译文
-- 当前源文里对应的 block
+- 当前目标译文
+- 当前源文
+- 当前 `playbook.md`
+- 当前 `memories/<lang>.md`
 
-然后让 LLM 判断这些修订里哪些属于可复用规则，并把它们合并进 `playbook.md` 或 `memories/<lang>.md`。如果文件结构变化太大，当前实现会为了安全起见跳过这次 learn。
+然后让 LLM 判断这些 source/target 对照里哪些属于可复用规则，并把它们合并进 `playbook.md` 或 `memories/<lang>.md`。
 
 ## 当前限制
 
 - 目前只实现了本地文件 workspace
 - 经验召回策略有意保持简单：每次都注入整个语言对 playbook
-- `learn` 目前只在 before/after block shape 能安全对齐时产出经验更新
+- `learn` 当前基于 source/target 成品对照提炼规则，而不是严格的 reviewer diff 归因
 - `bootstrap` 默认会使用所有 aligned docs；当某种语言的对齐文档很多时，交互模式下会提示你是否限制本次样本量
 - Markdown block 解析是 best-effort 的，对非常复杂的文档可能仍需继续打磨
 
@@ -439,8 +442,7 @@ pnpm evals:summary
 
 结果会保存到 `evals/docplaybook/results/*.json`，之后可以用 `evals:summary` 汇总。
 
-## 近期方向
+## 当前重点
 
 - 增强对列表、表格等复杂 Markdown 结构的 block 匹配能力
-- 增加项目级 revise 流程，让新学到的经验可以按语言聚合后再更新 memory
 - 继续优化长文档下的翻译耗时与可观测性

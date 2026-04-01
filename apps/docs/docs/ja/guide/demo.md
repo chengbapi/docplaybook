@@ -1,114 +1,163 @@
-# フロー デモ
+# デモ
 
-このページでは、DocPlaybook の 3 つの主要なループを、具体的で Git を優先した方法で示します。
+このページには詳細な手順のウォークスルーが掲載されています。
 
-ポイントは、各モデル呼び出しを分かりやすくすることです:
+ホームページは製品を素早く説明するべきです。このページは、ドキュメントリポジトリ内での実際の DocPlaybook ループが、具体的なファイル変更、コマンド、および期待される出力とともにどのように見えるかを示します。
 
-- 入力内容
-- モデルが行うこと
-- 出力内容
-
-## Translate
-
-`translate` はソース駆動です。
-
-Git のソース文書と現在のワーキングツリーを比較し、変更のないターゲットブロックを安定させ、変更されたターゲットブロックのみをモデルに再生成させます。
+## デモリポジトリの構成
 
 ```text
-Source A (Git HEAD)
-+ Source A (working tree)
-+ playbook.md
-+ memories/<lang>.md
-+ current target B
--> LLM
--> updated target B
+docs/
+  en/
+    guide/
+      introduction.md
+  ja/
+    guide/
+      introduction.md
+.docplaybook/
+  playbook.md
+  memories/
+    ja.md
 ```
 
-具体例:
+この例では：
 
-- 変更前のソース: `使用知识库管理文档。`
-- 変更後のソース: `使用知识库统一管理团队文档。`
-- メモリルール: `Translate "知识库" as "Wiki".`
-- 期待されるターゲット: `Use the Wiki to manage team docs in one place.`
+- 英語がソース言語
+- 日本語がターゲット言語
+- チームは既に用語メモリを持っている
 
-確認事項:
+## ケース1: 変更されたブロックのみを翻訳する
 
-- 変更されたブロックのみが再生成される
-- メモリとプレイブックのルールが結果に残っている
-- コードフェンス、リンク、インラインコードが保持される
+ライターが `docs/en/guide/introduction.md` の英語の文を1つ更新します。
 
-## Learn
+変更前：
 
-`learn` はターゲット差分駆動です。
+```md
+Use the knowledge base to manage docs.
+```
 
-レビュー前後の翻訳ファイルを比較し、その編集を現在のソースと照合して、その編集が再利用可能なプロジェクトガイダンスになるべきかをモデルに尋ねます。
+変更後：
+
+```md
+Use the knowledge base to manage team docs in one place.
+```
+
+プロジェクトメモリには既に次が含まれています：
+
+```md
+- Translate "knowledge base" as "Wiki".
+```
+
+実行：
+
+```bash
+docplaybook translate docs/en/guide/introduction.md --to ja
+```
+
+DocPlaybook がモデルに送るもの：
+
+- Git からのソース差分
+- 現在の日本語ターゲットファイル
+- `.docplaybook/playbook.md`
+- `.docplaybook/memories/ja.md`
+
+期待される結果：
+
+```md
+Wiki を使ってチームのドキュメントを一元管理します。
+```
+
+ここで重要な点：
+
+- 変更されていない日本語のブロックはそのままにする
+- 用語はメモリに従う
+- 変更されたソースブロックのみ再生成する
+
+## ケース2: レビュアーの修正から学ぶ
+
+レビュアーが日本語訳を手動で編集する。
+
+レビュー前:
+
+```md
+ワークスペースを設定します。
+```
+
+レビュー後:
+
+```md
+workspace を設定します。
+```
+
+チームは技術ドキュメントで`workspace`を翻訳せずそのままにしておきたい。
+
+実行:
+
+```bash
+docplaybook learn docs/ja/guide/introduction.md --from en
+```
+
+期待される効果:
+
+- DocPlaybookがその修正が再利用可能か確認する
+- 再利用可能であれば、構造化されたメモリ更新を提案する
+
+典型的なメモリパッチ:
+
+```md
+- Keep "workspace" in English in Japanese docs.
+- Prefer concise technical Japanese over explanatory paraphrase.
+```
+
+ここがレビュー作業が将来の一貫性へと変わる瞬間です。
+
+## ケース3: マージ前に翻訳済みページをリンティングする
+
+ページは翻訳済みだが、品質チェックを行いたい。
+
+現在の日本語ファイルには次の内容が含まれる:
+
+```md
+DocPlaybook は AI gateway mode をサポートします。
+この機能はとても簡単に使えます。
+```
+
+プロジェクトのルールには既に次のように記されている:
+
+- `gateway`を推奨し、`AI gateway`は使用しない
+- トーンは中立的かつ技術的に保つ
+
+Run:
+
+```bash
+docplaybook lint docs/ja/guide/introduction.md --from en
+```
+
+Expected findings:
 
 ```text
-Target B (Git HEAD)
-+ Target B (working tree)
-+ current source A
-+ playbook.md
-+ memories/<lang>.md
--> LLM
--> structured updates for playbook.md and memories/<lang>.md
+warn  Terminology mismatch: use "gateway" instead of "AI gateway".
+info  Tone drift: avoid promotional wording like "very easy".
 ```
 
-具体例:
+This is useful right before commit or in CI because it catches issues without rewriting the whole page.
 
-- ソースブロック: `使用知识库管理文档。`
-- 翻訳前: `Use the knowledge base to manage docs.`
-- 翻訳後: `Use the Wiki to manage docs.`
-- 期待されるメモリ更新: 用語ルールを追加（例: `Translate "知识库" as "Wiki".`）
+## Full loop
 
-確認事項:
+One realistic team loop looks like this:
 
-- 繰り返し発生し再利用可能な修正はメモリに追加される
-- 一回限りのページ書き換えは無視される
-- 結果は曖昧な説明ではなく構造化された更新である
+1. Edit English source docs.
+2. Run `translate` for the target languages that need updates.
+3. Review the translated files.
+4. Run `learn` on important reviewer corrections.
+5. Run `lint` before push or in CI.
 
-## Lint
+## Why this split works
 
-`lint` はルールを考慮したレビュー手順です。
+Each command has one job:
 
-現在のソース、現在のターゲット、プレイブック、言語メモリ、lint ルールを読み取り、モデルに対して問題の一覧を返すように要求します。
+- `translate` keeps target docs aligned with source changes
+- `learn` captures reusable reviewer knowledge
+- `lint` checks whether the current translation still matches project rules
 
-```text
-Source A
-+ Target B
-+ playbook.md
-+ memories/<lang>.md
-+ lint rules
--> LLM
--> score + issue list + optional safe fixes
-```
-
-具体例:
-
-- メモリは `gateway` を優先する
-- 現在の翻訳は `AI gateway` としている
-- 期待される指摘: 用語の不一致
-
-確認事項:
-
-- 指摘は実際の翻訳問題を指す
-- lint はプロジェクトの言語ルールを尊重する
-- 提案される修正は安全で局所的に留まる
-
-## メンタルモデル
-
-どのコマンドを実行するか判断する際に、このクイックマップを使用してください:
-
-- `translate`
-  - ソースが変更され、ターゲットが追従する必要がある
-- `learn`
-  - 翻訳レビューが行われ、プロジェクトメモリが改善されるべき
-- `lint`
-  - 翻訳が存在し、品質をチェックする必要がある
-
-これが全体のループです:
-
-1. ソース文書を編集する
-2. `translate` を実行する
-3. レビュー担当がターゲット文書を改善する
-4. `learn` を実行する
-5. `lint` を実行する
+That separation is what makes DocPlaybook understandable in practice, not just in theory.
