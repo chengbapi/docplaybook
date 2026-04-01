@@ -1,0 +1,75 @@
+[
+  {
+    "type": "section-header",
+    "label": "はじめに"
+  },
+  {
+    "type": "file",
+    "name": "introduction",
+    "label": "概要"
+  },
+  {
+    "type": "file",
+    "name": "quick-start",
+    "label": "クイックスタート"
+  },
+  {
+    "type": "file",
+    "name": "commands",
+    "label": "コマンド"
+  },
+  {
+    "type": "divider"
+  },
+  {
+    "type": "section-header",
+    "label": "ワークフロー"
+  },
+  {
+    "type": "file",
+    "name": "translate",
+    "label": "翻訳"
+  },
+  {
+    "type": "file",
+    "name": "revise",
+    "label": "改訂"
+  },
+  {
+    "type": "file",
+    "name": "local-workflow",
+    "label": "ローカルワークフロー"
+  },
+  {
+    "type": "file",
+    "name": "ci-github",
+    "label": "CI と GitHub"
+  },
+  {
+    "type": "divider"
+  },
+  {
+    "type": "section-header",
+    "label": "上級者向け"
+  },
+  {
+    "type": "file",
+    "name": "advanced",
+    "label": "ランタイムモデル"
+  },
+  {
+    "type": "file",
+    "name": "config",
+    "label": "設定"
+  },
+  {
+    "type": "file",
+    "name": "agents",
+    "label": "エージェント"
+  },
+  {
+    "type": "file",
+    "name": "memory",
+    "label": "メモリ"
+  }
+]

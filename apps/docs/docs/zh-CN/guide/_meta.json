@@ -1,0 +1,75 @@
+[
+  {
+    "type": "section-header",
+    "label": "开始使用"
+  },
+  {
+    "type": "file",
+    "name": "introduction",
+    "label": "介绍"
+  },
+  {
+    "type": "file",
+    "name": "quick-start",
+    "label": "快速开始"
+  },
+  {
+    "type": "file",
+    "name": "commands",
+    "label": "命令"
+  },
+  {
+    "type": "divider"
+  },
+  {
+    "type": "section-header",
+    "label": "工作流程"
+  },
+  {
+    "type": "file",
+    "name": "translate",
+    "label": "翻译"
+  },
+  {
+    "type": "file",
+    "name": "revise",
+    "label": "修订"
+  },
+  {
+    "type": "file",
+    "name": "local-workflow",
+    "label": "本地工作流程"
+  },
+  {
+    "type": "file",
+    "name": "ci-github",
+    "label": "CI 与 GitHub"
+  },
+  {
+    "type": "divider"
+  },
+  {
+    "type": "section-header",
+    "label": "高级"
+  },
+  {
+    "type": "file",
+    "name": "advanced",
+    "label": "运行时模型"
+  },
+  {
+    "type": "file",
+    "name": "config",
+    "label": "配置"
+  },
+  {
+    "type": "file",
+    "name": "agents",
+    "label": "代理"
+  },
+  {
+    "type": "file",
+    "name": "memory",
+    "label": "记忆"
+  }
+]

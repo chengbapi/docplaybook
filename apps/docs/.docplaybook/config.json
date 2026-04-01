@@ -10,6 +10,11 @@
   "concurrency": {
     "maxConcurrentRequests": 20
   },
+  // Batching reduces repeated prompt overhead on long documents.
+  "batch": {
+    "maxBlocksPerBatch": 8,
+    "maxCharsPerBatch": 6000
+  },
   "layout": {
     "kind": "rspress"
   },
