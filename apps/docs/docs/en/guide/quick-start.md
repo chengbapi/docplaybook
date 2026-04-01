@@ -1,4 +1,4 @@
-import PackageManagerTabs from '../../../theme/components/PackageManagerTabs';
+  
 
 # Quick Start
 
