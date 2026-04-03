@@ -36,7 +36,7 @@
 }
 ```
 
-通过你的包管理器运行它们：
+通过您的包管理器运行它们：
 
 ```bash
 pnpm docs:sync
@@ -44,9 +44,9 @@ npm run docs:sync
 yarn docs:sync
 ```
 
-## Git 钩子
+## `Git` 钩子
 
-一个实用的本地钩子模式是在推送之前运行 lint：
+一个实用的本地钩子模式是在推送之前运行 `lint`：
 
 ```bash
 pnpm exec docplaybook lint . --fix

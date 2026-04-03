@@ -32,7 +32,7 @@ pnpm exec docplaybook init .
 - `.docplaybook/memories/*.md`を作成する
 - `.docplaybook/playbook.md`を作成する
 
-既に翻訳済みのターゲットファイルが存在する場合、`init`は既存のドキュメントから最初の`playbook`と言語用の`memories`を推測するために、`bootstrap`の実行を提案します。
+既に翻訳済みのターゲットドキュメントが存在する場合、`init`は既存のドキュメントから最初の`playbook`と言語用の`memories`を推測するために、`bootstrap`の実行を提案します。
 
 翻訳と学習の実行が始まると、`DocPlaybook`は`.docplaybook/state/*.json`も維持します。これらのファイルはブランチの進行状況を追跡し、ブランチとともにコミットすることを想定しています。
 
@@ -53,16 +53,16 @@ pnpm exec docplaybook bootstrap . --langs ja
 
 ## プロバイダーの設定
 
-DocPlaybookはAI対応でLLMベースのため、プロバイダーの設定は初期化の一部です。
+`DocPlaybook`はAI対応でLLMベースのため、プロバイダーの設定は初期化の一部です。
 
 初期化中に、次のことを行います：
 
 - プロバイダーを選択する
-- `model id` を選択する
+- モデルIDを選択する
 - 認証情報を提供する
 - 接続チェックを実行する
 
-チームに合ったプロバイダーを選択できます。DocPlaybookは特定のプロバイダーファミリーを必須としません。
+チームに合ったプロバイダーを選択できます。`DocPlaybook`は特定のプロバイダーファミリーを必須としません。
 
 チームのワークフローでは、多くのプロジェクトがプロバイダーとモデルを設定ファイルで固定し、ローカル実行とCI実行の一貫性を保ちます。
 
@@ -91,7 +91,7 @@ docs/en/guide/intro.md
 
 ### Docusaurus
 
-DocPlaybookが`Docusaurus`を検出すると、翻訳されたドキュメントを次に書き込みます：
+`DocPlaybook`が`Docusaurus`を検出すると、翻訳されたドキュメントを次に書き込みます：
 
 ```text
 i18n/<locale>/docusaurus-plugin-content-docs/current/
@@ -101,7 +101,7 @@ i18n/<locale>/docusaurus-plugin-content-docs/current/
 
 ### Rspress
 
-DocPlaybookが`Rspress`を検出すると、翻訳されたドキュメントを次に書き込みます：
+`DocPlaybook`が`Rspress`を検出すると、翻訳されたドキュメントを次に書き込みます：
 
 ```text
 docs/<locale>/
@@ -111,17 +111,17 @@ docs/<locale>/
 
 ### VitePress
 
-DocPlaybookが`VitePress`を検出すると、翻訳されたドキュメントを次に書き込みます：
+`DocPlaybook`が`VitePress`を検出すると、翻訳されたドキュメントを次に書き込みます：
 
 ```text
 docs/<locale>/
 ```
 
-これは VitePress プロジェクトで使われる一般的なローカライズされたドキュメントレイアウトに従っています。
+これは`VitePress`プロジェクトで使われる一般的なローカライズされたドキュメントレイアウトに従っています。
 
 ### `sibling`
 
-サポートされているドキュメントフレームワークが検出されない場合、DocPlaybook はフォールバックとして `sibling` を使用し、翻訳ファイルはソースファイルの隣に配置されます：
+`DocPlaybook`はフォールバックとして`sibling`を使用し、翻訳ファイルはソースファイルの隣に配置されます：
 
 ```text
 guide.md

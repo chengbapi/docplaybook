@@ -35,9 +35,9 @@ pnpm exec docplaybook lint . --scope all
 1. 运行 `docplaybook translate .`
 2. 提交或上传生成的翻译更改
 3. 运行 `docplaybook lint . --fix --scope changed`
-4. 如果 lint 仍报告不可接受的问题，则使作业失败
+4. 如果 `lint` 仍然报告不可接受的问题，则让该作业失败
 
-这样能为审查者同时提供更新后的翻译文档和明确的问题发现。
+这样能同时为审查者提供更新后的翻译文档和明确的问题报告。
 
 ## 模型设置
 
@@ -45,7 +45,7 @@ pnpm exec docplaybook lint . --scope all
 
 ### 共享模型，不同的密钥
 
-将 provider 和 model 保存在 `.docplaybook/config.json` 中。
+将 `provider` 和 `model` 保存在 `.docplaybook/config.json` 中。
 
 然后：
 

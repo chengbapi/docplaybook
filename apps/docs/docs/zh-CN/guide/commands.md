@@ -13,7 +13,7 @@ pnpm exec docplaybook .
 1. `learn`
 2. `translate`
 
-当你想要正常的维护循环而无需手动选择每个步骤时使用它。
+当您想要正常的维护循环而无需手动选择每个步骤时使用它。
 
 ## `docplaybook bootstrap`
 
@@ -21,7 +21,7 @@ pnpm exec docplaybook .
 pnpm exec docplaybook bootstrap . --langs ja
 ```
 
-当仓库中已经包含对齐的翻译文档，并且你希望 DocPlaybook 从现有内容推断出第一个项目记忆时，请使用 `bootstrap`。
+当仓库中已经包含对齐的翻译文档，并且您希望 `DocPlaybook` 从现有内容推断出第一个项目记忆时，请使用 `bootstrap`。
 
 `bootstrap`：
 
@@ -44,7 +44,7 @@ pnpm exec docplaybook translate .
 - 如果目标文档对应的源哈希未更改且目标已存在，则跳过
 - 如果源哈希已更改或目标缺失，则安全地刷新目标文章
 
-你可以将运行限制为选定的语言：
+您可以将运行限制为选定的语言：
 
 ```bash
 pnpm exec docplaybook translate . --langs ja
@@ -57,14 +57,14 @@ pnpm exec docplaybook translate . --langs en,ja
 pnpm exec docplaybook learn .
 ```
 
-在审阅者编辑了翻译文档并且你希望这些修正成为可重用的项目指导时使用此命令。
+在审阅者编辑了翻译文档并且您希望这些修正成为可重用的项目指导时使用此命令。
 
 `learn` 也是基于状态的：
 
 - 如果自上次 learn 运行以来目标哈希未更改，则跳过
 - 如果目标已更改，它会读取当前的源/目标对并更新 `playbook.md` 和 `memories/<lang>.md`
 
-你可以将学习限制为选定的语言：
+您可以将学习限制为选定的语言：
 
 ```bash
 pnpm exec docplaybook learn . --langs ja

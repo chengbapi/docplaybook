@@ -87,3 +87,50 @@ test('QualityLinter parses scores, findings, and block fixes from model JSON', a
   assert.equal(result.findings[0]?.fix?.text, 'Use Wiki.');
   assert.equal(result.usage.totalTokens, 30);
 });
+
+test('QualityLinter strips target block wrapper lines from fix text', async () => {
+  const linter = new QualityLinter(
+    { model: {} as never, label: 'test-model' },
+    async () => ({
+      text: JSON.stringify({
+        scores: {
+          terminology: 90,
+          tone: 90,
+          completeness: 90,
+          markdown: 90,
+          fluency: 90,
+          overall: 90
+        },
+        findings: [
+          {
+            severity: 'warn',
+            category: 'terminology',
+            message: 'Short label should stay concise.',
+            targetBlockIndex: 1,
+            fix: {
+              targetBlockIndex: 1,
+              text: '## Target Block 1\nKind: json-string\nTranslatable: yes\n简介'
+            }
+          }
+        ]
+      }),
+      usage: {
+        inputTokens: 10,
+        outputTokens: 20,
+        totalTokens: 30
+      }
+    }) as never
+  );
+
+  const result = await linter.lintDocument({
+    sourceLanguage: 'en',
+    targetLanguage: 'zh-CN',
+    docKey: 'docs/_nav.json',
+    memoryText: '# Global Playbook\n\n# zh-CN Memory',
+    sourceSnapshot: createSnapshot('docs/en/_nav.json', 'Introduction'),
+    targetSnapshot: createSnapshot('docs/zh-CN/_nav.json', '介绍'),
+    fix: true
+  });
+
+  assert.equal(result.findings[0]?.fix?.text, '简介');
+});

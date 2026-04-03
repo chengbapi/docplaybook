@@ -44,8 +44,11 @@ export function buildLintPrompt(input: {
     'Find concrete issues, like a Markdown linter or review tool.',
     'Be specific and actionable. Only report real issues.',
     input.fix
-      ? 'When a finding can be safely fixed by replacing exactly one translated block, include a fix with the target block index and the full replacement Markdown block.'
+      ? 'When a finding can be safely fixed by replacing exactly one translated block, include a fix with the target block index and only the replacement block content itself.'
       : 'Do not include speculative fixes unless you are confident.',
+    input.fix
+      ? 'Do not repeat helper labels such as "## Target Block", "Kind:", or "Translatable:" inside fix.text.'
+      : 'Do not include fix.text unless the replacement is safe and exact.',
     'If the playbook is missing standard sections or is too weak to enforce consistency, add memory findings.',
     'Return strict JSON only with this shape:',
     '{"scores":{"terminology":0,"tone":0,"completeness":0,"markdown":0,"fluency":0,"overall":0},"findings":[{"severity":"warn","category":"terminology","message":"...","sourceBlockIndex":1,"targetBlockIndex":1,"suggestion":"...","fix":{"targetBlockIndex":1,"text":"..."}}]}',

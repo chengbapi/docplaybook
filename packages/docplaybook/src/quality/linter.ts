@@ -71,7 +71,7 @@ function parseFinding(input: Record<string, unknown>): LintFinding {
             targetBlockIndex ??
             0,
           text: typeof (input.fix as { text?: unknown }).text === 'string'
-            ? stripOuterMarkdownFence((input.fix as { text: string }).text.trim())
+            ? sanitizeFixText(stripOuterMarkdownFence((input.fix as { text: string }).text.trim()))
             : ''
         }
       : undefined;
@@ -130,6 +130,20 @@ function stripOuterMarkdownFence(text: string): string {
   }
 
   return match[1] ?? text;
+}
+
+function sanitizeFixText(text: string): string {
+  const lines = text.split('\n');
+  let index = 0;
+
+  if (/^##\s+Target Block\s+\d+/i.test(lines[index] ?? '')) {
+    index += 1;
+    while (index < lines.length && /^(Kind|Translatable):/i.test(lines[index] ?? '')) {
+      index += 1;
+    }
+  }
+
+  return lines.slice(index).join('\n').trim();
 }
 
 function normalizeUsage(usage: {

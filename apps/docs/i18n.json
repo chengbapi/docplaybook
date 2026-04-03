@@ -11,13 +11,13 @@
   },
   "worksWithFramework": {
     "en": "Works with {framework}",
-    "ja": "{framework} に対応",
+    "ja": "`{framework}`に対応",
     "zh-CN": "兼容 {framework}"
   },
   "coreWorkflow": {
     "en": "Core Workflow",
     "ja": "コアワークフロー",
-    "zh-CN": "核心工作流"
+    "zh-CN": "核心工作流程"
   },
   "coreWorkflowTitle": {
     "en": "State-driven translation, reusable memory, and workspace review.",
@@ -26,8 +26,8 @@
   },
   "coreWorkflowCopy": {
     "en": "DocPlaybook uses workspace state to decide what to process, keeps document structure safe, and reuses guidance from the global playbook and language memories.",
-    "ja": "DocPlaybookはワークスペースの状態を使って処理対象を決定し、ドキュメント構造を保護し、グローバルプレイブックと言語メモリからのガイダンスを再利用します。",
-    "zh-CN": "DocPlaybook 使用工作区状态来决定要处理的内容，保持文档结构安全，并重用来自全局 playbook 和语言记忆的指导。"
+    "ja": "`DocPlaybook`はワークスペースの状態を使って処理対象を決定し、ドキュメント構造を保護し、グローバルプレイブックと言語メモリからのガイダンスを再利用します。",
+    "zh-CN": "`DocPlaybook` 使用工作区状态来决定要处理的内容，保持文档结构不被修改，并重用来自全局 `playbook` 和语言记忆的指导。"
   },
   "translateTitle": {
     "en": "Translate",
@@ -36,7 +36,7 @@
   },
   "translateDescription": {
     "en": "Skip unchanged targets and refresh missing or stale target articles.",
-    "ja": "変更のないターゲットをスキップし、欠落または古くなったターゲット記事を更新します。",
+    "ja": "変更のないターゲットをスキップし、欠落または古くなったターゲットドキュメントを更新します。",
     "zh-CN": "跳过未更改的目标，并刷新缺失或过时的目标文章。"
   },
   "learnTitle": {
@@ -81,8 +81,8 @@
   },
   "oneArticleRequest": {
     "en": "one target article refresh with structure-aware writeback",
-    "ja": "構造認識型の書き戻しを伴うターゲット記事1件の更新",
-    "zh-CN": "一次目标文章刷新，使用结构感知写回。"
+    "ja": "構造認識型の書き戻しを伴うターゲットドキュメント1件の更新",
+    "zh-CN": "一次目标文章刷新，进行结构感知写回。"
   },
   "reviewChange": {
     "en": "review change",
@@ -106,7 +106,7 @@
   },
   "terminologyMismatch": {
     "en": "Terminology mismatch: memory prefers \"gateway\", not \"AI gateway\".",
-    "ja": "用語の不一致：メモリは「gateway」を好み、「AI gateway」を好みません。",
+    "ja": "用語の不一致：メモリは`gateway`を推奨し、`AI gateway`は使用しません。",
     "zh-CN": "术语不匹配：记忆偏好 `gateway`，而非 `AI gateway`。"
   },
   "toneDrift": {
@@ -126,8 +126,8 @@
   },
   "installTitle": {
     "en": "Add DocPlaybook to the docs project you already have.",
-    "ja": "既存のドキュメントプロジェクトにDocPlaybookを追加してください。",
-    "zh-CN": "将 DocPlaybook 添加到您已有的文档项目中。"
+    "ja": "既存のドキュメントプロジェクトに`DocPlaybook`を追加してください。",
+    "zh-CN": "将 `DocPlaybook` 添加到您已有的文档项目中。"
   },
   "installCopy": {
     "en": "Start inside your existing documentation repo, run initialization once, then translate source changes, learn from reviewer edits, and review workspace health as needed.",

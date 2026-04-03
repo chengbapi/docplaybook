@@ -1,6 +1,6 @@
 # コマンド
 
-このページでは `init` の後のコアな CLI 操作を説明します。
+このページでは`init`の後に提供される主要な CLI コマンドを説明します。
 
 ## デフォルトコマンド
 
@@ -8,7 +8,7 @@
 pnpm exec docplaybook .
 ```
 
-デフォルトのローカルワークフローは現在、次を実行します:
+デフォルトのローカルワークフローは現在、次を実行します：
 
 1. `learn`
 2. `translate`
@@ -21,15 +21,15 @@ pnpm exec docplaybook .
 pnpm exec docplaybook bootstrap . --langs ja
 ```
 
-リポジトリにすでに整列された翻訳ドキュメントが含まれており、その既存の内容から DocPlaybook に最初のプロジェクトメモリを推測させたい場合に `bootstrap` を使用します。
+リポジトリにすでに整列された翻訳ドキュメントが含まれており、その既存の内容から `DocPlaybook` に最初のプロジェクトメモリを推測させたい場合に `bootstrap` を使用します。
 
-`bootstrap`:
+`bootstrap`：
 
-- リポジトリ内の整列済みのソースおよびターゲット文書をスキャンします
+- リポジトリ内の整列済みのソースドキュメントおよびターゲットドキュメントをスキャンします
 - 最初の `.docplaybook/playbook.md` を書き込みます
 - 最初の `.docplaybook/memories/<lang>.md` を書き込みます
 
-これはコールドスタートの手順です。その後ワークスペースを同期し続けるものではありません。日常的な更新は引き続き `translate`、`learn`、`lint` を使用します。
+これはコールドスタートの手順です。その後ワークスペースを同期し続けるものではありません。日常的な更新は引き続き`translate`、`learn`、`lint`を使用します。
 
 ## `docplaybook translate`
 
@@ -37,14 +37,14 @@ pnpm exec docplaybook bootstrap . --langs ja
 pnpm exec docplaybook translate .
 ```
 
-ソース文書が変更され、ターゲット文書を追従させる必要があるときにこれを使用します。
+ソースドキュメントが変更され、ターゲットドキュメントを追従させる必要があるときにこれを使用します。
 
-`translate` は状態駆動です:
+`translate`は状態駆動です：
 
-- ターゲット文書に対応するソースのハッシュが変更されておらず、かつターゲットが既に存在する場合はスキップします
-- ソースのハッシュが変更されたかターゲットが存在しない場合は、ターゲット記事を安全に更新します
+- ソースドキュメントに対応するターゲットドキュメントのハッシュが変更されておらず、かつターゲットドキュメントが既に存在する場合はスキップします
+- ソースドキュメントのハッシュが変更されたかターゲットドキュメントが存在しない場合は、ターゲット記事を安全に更新します
 
-実行を選択した言語に限定できます:
+実行を選択した言語に限定できます：
 
 ```bash
 pnpm exec docplaybook translate . --langs ja
@@ -59,12 +59,12 @@ pnpm exec docplaybook learn .
 
 レビュアーが翻訳文書を編集した後、その修正を再利用可能なプロジェクトガイダンスに反映させたい場合にこれを使用します。
 
-`learn` も状態駆動です:
+`learn`も状態駆動です：
 
-- 最後の learn 実行以降、ターゲットのハッシュが変更されていない場合はスキップします
-- ターゲットが変更されている場合は、現在のソース/ターゲットのペアを読み取り、`playbook.md` と `memories/<lang>.md` を更新します
+- 最後の learn 実行以降、ターゲットドキュメントのハッシュが変更されていない場合はスキップします
+- ターゲットドキュメントが変更されている場合は、現在のソースドキュメント/ターゲットドキュメントのペアを読み取り、`playbook.md` と `memories/<lang>.md` を更新します
 
-学習を選択した言語に限定できます:
+学習を選択した言語に限定できます：
 
 ```bash
 pnpm exec docplaybook learn . --langs ja
@@ -76,9 +76,9 @@ pnpm exec docplaybook learn . --langs ja
 pnpm exec docplaybook lint .
 ```
 
-翻訳文書をソース文書や現在のプロジェクトガイダンスと照合してレビューするために使用します。
+翻訳文書をソースドキュメントや現在のプロジェクトガイダンスと照合してレビューするために使用します。
 
-典型的なバリエーション:
+典型的なバリエーション：
 
 ```bash
 pnpm exec docplaybook lint . --fix
@@ -88,13 +88,13 @@ pnpm exec docplaybook lint . --fix --scope changed --langs ja
 
 ## ログ
 
-詳細ログ:
+詳細ログ：
 
 ```bash
 pnpm exec docplaybook . --verbose
 ```
 
-デバッグログ:
+デバッグログ：
 
 ```bash
 pnpm exec docplaybook . --debug

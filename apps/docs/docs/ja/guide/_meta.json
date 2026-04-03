@@ -43,7 +43,7 @@
   {
     "type": "file",
     "name": "ci-github",
-    "label": "CI と GitHub"
+    "label": "`CI`と`GitHub`"
   },
   {
     "type": "divider"
@@ -70,6 +70,6 @@
   {
     "type": "file",
     "name": "memory",
-    "label": "メモリ"
+    "label": "`Memory`"
   }
 ]
