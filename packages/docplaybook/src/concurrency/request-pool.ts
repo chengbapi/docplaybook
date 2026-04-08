@@ -1,3 +1,4 @@
+import { context, type Context } from '@opentelemetry/api';
 import { label, verboseLog } from '../ui.js';
 
 type Task<T> = () => Promise<T>;
@@ -8,6 +9,7 @@ interface QueuedTask<T> {
   reject: (reason?: unknown) => void;
   enqueuedAt: number;
   label?: string;
+  activeContext: Context;
 }
 
 export class RequestPool {
@@ -29,7 +31,8 @@ export class RequestPool {
         resolve,
         reject,
         enqueuedAt: Date.now(),
-        label: metadata.label
+        label: metadata.label,
+        activeContext: context.active()
       });
       verboseLog(
         'queue',
@@ -67,7 +70,7 @@ export class RequestPool {
         `Starting request (active: ${this.activeCount}, queued: ${this.queue.length}, limit: ${this.currentLimit}, waited: ${waitMs}ms${next.label ? `, task: ${next.label}` : ''}).`
       );
 
-      void next.task()
+      void context.with(next.activeContext, () => next.task())
         .then(next.resolve, next.reject)
         .finally(() => {
           this.activeCount -= 1;
