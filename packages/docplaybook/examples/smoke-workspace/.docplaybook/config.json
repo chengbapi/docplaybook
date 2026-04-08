@@ -1,17 +1,17 @@
 {
   "version": 1,
   "sourceLanguage": "zh-CN",
-  "targetLanguages": ["en", "ja"],
+  "targetLanguages": ["en"],
   "ignorePatterns": ["**/node_modules/**", "**/.git/**", "**/dist/**", "**/.docplaybook/**"],
   "concurrency": {
-    "maxConcurrentRequests": 6
+    "maxConcurrentRequests": 2
   },
   "batch": {
-    "maxBlocksPerBatch": 8,
-    "maxCharsPerBatch": 6000
+    "maxBlocksPerBatch": 4,
+    "maxCharsPerBatch": 2000
   },
   "layout": {
-    "kind": "docusaurus"
+    "kind": "sibling"
   },
   "model": {
     "kind": "openai",

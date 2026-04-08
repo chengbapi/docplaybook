@@ -93,6 +93,63 @@ docplaybook ./examples/sample-workspace --verbose
 docplaybook ./examples/sample-workspace --debug
 ```
 
+## Langfuse 可观测性
+
+如果你想持续观察翻译效果和执行过程，可以为 `translate` 流程开启可选的 `Langfuse` tracing。
+
+默认情况下它是关闭的。只有在显式设置 `DOCPLAYBOOK_LANGFUSE_ENABLED=true` 时才会启用。
+
+最小配置示例（Langfuse Cloud）：
+
+```bash
+export DOCPLAYBOOK_LANGFUSE_ENABLED=true
+export LANGFUSE_PUBLIC_KEY=pk-lf-...
+export LANGFUSE_SECRET_KEY=sk-lf-...
+export LANGFUSE_HOST=https://cloud.langfuse.com
+```
+
+然后正常执行：
+
+```bash
+docplaybook translate ./examples/sample-workspace
+```
+
+当前版本只追踪 `translate` 路径，不追踪 `learn`、`bootstrap` 或 `lint`。
+
+会记录的信息包括：
+
+- 哪个 source article 被翻译到了哪个 target article
+- `docKey`、源/目标语言、触发原因、是否 `--force`
+- 单次文章翻译的耗时和聚合 token 用量
+- 每个底层模型调用是 `single`、`batch`，还是 `batch-fallback`
+- batch 解析失败和限流重试等事件
+
+为了保守处理敏感内容，默认不会把完整 prompt 或完整译文上传到 `Langfuse`。当前只记录元数据，例如字符数、block 数、token、耗时和错误摘要。
+
+可以和现有日志配合使用：
+
+- `--verbose`
+  - 查看当前 CLI 在处理哪些文件、哪些目标语言
+- `--debug`
+  - 保留本地临时 trace 文件，适合深入看 prompt 和响应 payload
+- `Langfuse`
+  - 适合看运行历史、耗时、token、fallback、重试和跨多次运行的趋势
+
+一个常见的回归分析流程是：
+
+1. 先在 `Langfuse` 中筛选耗时最高、token 最高或 fallback 最多的翻译运行。
+2. 找到对应的 `source_path`、`target_path`、`docKey` 和目标语言。
+3. 再用 `--debug` 对同一类文档做本地重跑，检查 prompt 结构、memory 质量或 batch JSON 形状问题。
+4. 把确认过的问题样本加入 `evals/docplaybook` 的人工评测流程，持续观察修复是否稳定。
+
+如果你在短生命周期的 CLI/CI 环境中使用它，也可以额外设置：
+
+```bash
+export DOCPLAYBOOK_LANGFUSE_FLUSH_TIMEOUT_MS=8000
+```
+
+这会控制命令退出前等待 trace flush 的最长时间。
+
 按 memory 对现有译文进行质量检查：
 
 ```bash

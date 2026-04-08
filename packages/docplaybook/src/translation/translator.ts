@@ -15,6 +15,8 @@ import {
   buildTranslationSystemPrompt
 } from './prompts.js';
 import type { ModelHandle } from '../model/model-factory.js';
+import type { DocplaybookObservability } from '../observability.js';
+import { noopObservability } from '../observability.js';
 import { debugLog, isDebugEnabled, verboseLog } from '../ui.js';
 
 const BATCH_SPLIT_THRESHOLD = readPositiveIntEnv('DOCPLAYBOOK_BATCH_SPLIT_THRESHOLD') ?? 30;
@@ -22,34 +24,60 @@ const BATCH_CHUNK_SIZE = readPositiveIntEnv('DOCPLAYBOOK_BATCH_CHUNK_SIZE') ?? 1
 const DEBUG_TRACE_DIR = path.join(os.tmpdir(), 'docplaybook-llm-trace');
 
 export class Translator {
-  public constructor(private readonly modelHandle: ModelHandle) {}
+  public constructor(
+    private readonly modelHandle: ModelHandle,
+    private readonly observability: DocplaybookObservability = noopObservability,
+    private readonly runner: typeof generateText = generateText
+  ) {}
 
   public async translateBlock(context: TranslationContext): Promise<TranslationResult> {
     const systemPrompt = buildTranslationSystemPrompt(context);
     const prompt = buildTranslationPrompt(context);
-    debugLog(
-      `single-block ${context.targetLanguage} prompt for ${context.docKey}: sourceChars=${context.sourceBlock.length}, memoryChars=${context.memoryText.length}, systemChars=${systemPrompt.length}, promptChars=${prompt.length}.`
-    );
-    const result = await generateText({
-      model: this.modelHandle.model,
-      system: systemPrompt,
-      prompt
-    });
-    await writeDebugTrace({
-      kind: 'single',
-      docKey: context.docKey,
-      targetLanguage: context.targetLanguage,
-      blockCount: 1,
-      sourceChars: context.sourceBlock.length,
-      systemPrompt,
-      prompt,
-      responseText: result.text
-    });
+    return this.observability.withSpan(
+      'docplaybook.translate.model_call',
+      {
+        'docplaybook.call_mode': 'single',
+        'docplaybook.doc_key': context.docKey,
+        'docplaybook.target_language': context.targetLanguage,
+        'docplaybook.source_chars': context.sourceBlock.length,
+        'docplaybook.memory_chars': context.memoryText.length,
+        'docplaybook.system_prompt_chars': systemPrompt.length,
+        'docplaybook.prompt_chars': prompt.length,
+        'docplaybook.block_count': 1,
+        'docplaybook.model_label': this.modelHandle.label
+      },
+      async (span) => {
+        debugLog(
+          `single-block ${context.targetLanguage} prompt for ${context.docKey}: sourceChars=${context.sourceBlock.length}, memoryChars=${context.memoryText.length}, systemChars=${systemPrompt.length}, promptChars=${prompt.length}.`
+        );
+        const result = await this.runner({
+          model: this.modelHandle.model,
+          system: systemPrompt,
+          prompt
+        });
+        await writeDebugTrace({
+          kind: 'single',
+          docKey: context.docKey,
+          targetLanguage: context.targetLanguage,
+          blockCount: 1,
+          sourceChars: context.sourceBlock.length,
+          systemPrompt,
+          prompt,
+          responseText: result.text
+        });
+        const usage = normalizeUsage(result.usage);
+        span.setAttributes({
+          'docplaybook.input_tokens': usage.inputTokens,
+          'docplaybook.output_tokens': usage.outputTokens,
+          'docplaybook.total_tokens': usage.totalTokens
+        });
 
-    return {
-      text: stripOuterMarkdownFence(result.text.trim()),
-      usage: normalizeUsage(result.usage)
-    };
+        return {
+          text: stripOuterMarkdownFence(result.text.trim()),
+          usage
+        };
+      }
+    );
   }
 
   public async translateBlocks(input: {
@@ -128,46 +156,74 @@ export class Translator {
       `batch ${input.targetLanguage} prompt for ${input.docKey}: blocks=${blocksWithIds.length}, memoryChars=${input.memoryText.length}, systemChars=${systemPrompt.length}, promptChars=${prompt.length}.`
     );
     const batchStartedAt = Date.now();
-    const result = await generateText({
-      model: this.modelHandle.model,
-      system: systemPrompt,
-      prompt
-    });
-    await writeDebugTrace({
-      kind: 'batch',
-      docKey: input.docKey,
-      targetLanguage: input.targetLanguage,
-      blockCount: blocksWithIds.length,
-      sourceChars: totalSourceChars,
-      systemPrompt,
-      prompt,
-      responseText: result.text
-    });
+    return this.observability.withSpan(
+      'docplaybook.translate.model_call',
+      {
+        'docplaybook.call_mode': 'batch',
+        'docplaybook.doc_key': input.docKey,
+        'docplaybook.target_language': input.targetLanguage,
+        'docplaybook.source_chars': totalSourceChars,
+        'docplaybook.memory_chars': input.memoryText.length,
+        'docplaybook.system_prompt_chars': systemPrompt.length,
+        'docplaybook.prompt_chars': prompt.length,
+        'docplaybook.block_count': blocksWithIds.length,
+        'docplaybook.model_label': this.modelHandle.label
+      },
+      async (span) => {
+        const result = await this.runner({
+          model: this.modelHandle.model,
+          system: systemPrompt,
+          prompt
+        });
+        await writeDebugTrace({
+          kind: 'batch',
+          docKey: input.docKey,
+          targetLanguage: input.targetLanguage,
+          blockCount: blocksWithIds.length,
+          sourceChars: totalSourceChars,
+          systemPrompt,
+          prompt,
+          responseText: result.text
+        });
+        const usage = normalizeUsage(result.usage);
+        span.setAttributes({
+          'docplaybook.input_tokens': usage.inputTokens,
+          'docplaybook.output_tokens': usage.outputTokens,
+          'docplaybook.total_tokens': usage.totalTokens
+        });
 
-    try {
-      const texts = parseBatchTranslation(result.text, blocksWithIds);
-      verboseLog(
-        'batch',
-        'cyan',
-        `${input.targetLanguage}: parsed batch response for ${blocksWithIds.length} block id(s) in ${Date.now() - batchStartedAt}ms.`
-      );
-      debugLog(
-        `batch ${input.targetLanguage} success for ${input.docKey}: blocks=${blocksWithIds.length}, sourceChars=${totalSourceChars}, elapsedMs=${Date.now() - batchStartedAt}.`
-      );
+        try {
+          const texts = parseBatchTranslation(result.text, blocksWithIds);
+          verboseLog(
+            'batch',
+            'cyan',
+            `${input.targetLanguage}: parsed batch response for ${blocksWithIds.length} block id(s) in ${Date.now() - batchStartedAt}ms.`
+          );
+          debugLog(
+            `batch ${input.targetLanguage} success for ${input.docKey}: blocks=${blocksWithIds.length}, sourceChars=${totalSourceChars}, elapsedMs=${Date.now() - batchStartedAt}.`
+          );
 
-      return {
-        texts,
-        usage: normalizeUsage(result.usage)
-      };
-    } catch (error) {
-      console.warn(
-        `Batch translation JSON parse failed for ${input.docKey} (${input.targetLanguage}); falling back to single-block translation.`
-      );
-      debugLog(
-        `batch ${input.targetLanguage} parse failure for ${input.docKey}: blocks=${blocksWithIds.length}, sourceChars=${totalSourceChars}, elapsedMs=${Date.now() - batchStartedAt}, error=${error instanceof Error ? error.message : String(error)}`
-      );
-      return this.translateBlocksIndividually(input);
-    }
+          return {
+            texts,
+            usage
+          };
+        } catch (error) {
+          console.warn(
+            `Batch translation JSON parse failed for ${input.docKey} (${input.targetLanguage}); falling back to single-block translation.`
+          );
+          debugLog(
+            `batch ${input.targetLanguage} parse failure for ${input.docKey}: blocks=${blocksWithIds.length}, sourceChars=${totalSourceChars}, elapsedMs=${Date.now() - batchStartedAt}, error=${error instanceof Error ? error.message : String(error)}`
+          );
+          span.setAttributes({
+            'docplaybook.call_mode': 'batch-fallback'
+          });
+          span.addEvent('docplaybook.translate.batch_parse_failed', {
+            'docplaybook.error_message': error instanceof Error ? error.message : String(error)
+          });
+          return this.translateBlocksIndividually(input);
+        }
+      }
+    );
   }
 
   private async translateBlocksIndividually(input: {

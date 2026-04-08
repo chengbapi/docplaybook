@@ -59,6 +59,11 @@
   },
   {
     "type": "file",
+    "name": "observability",
+    "label": "可观测性"
+  },
+  {
+    "type": "file",
     "name": "config",
     "label": "配置"
   },

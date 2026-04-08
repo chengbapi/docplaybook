@@ -12,6 +12,7 @@ import { MemoryStore } from '../src/memories/memory-store.ts';
 import { LocalFolderProvider } from '../src/providers/local-folder-provider.ts';
 import { DocSetProcessor } from '../src/service/docset-processor.ts';
 import type { AppConfig, BootstrapExample, DocSet, LearnCandidate, LearnJudgement, TranslationContext } from '../src/types.ts';
+import type { DocplaybookObservability, ObservabilitySpan } from '../src/observability.ts';
 import type { Translator } from '../src/translation/translator.ts';
 import type { MemoryUpdater } from '../src/translation/memory-updater.ts';
 import { sha256 } from '../src/utils.ts';
@@ -90,6 +91,70 @@ async function loadGuideDocSet(root: string, config: AppConfig): Promise<DocSet>
   return adapter.buildDocSets(files, root, config)[0]!;
 }
 
+class RecordingObservability implements DocplaybookObservability {
+  public readonly enabled = true;
+  public readonly spans: Array<{
+    name: string;
+    attributes: Record<string, string | number | boolean>;
+    events: Array<{
+      name: string;
+      attributes: Record<string, string | number | boolean>;
+    }>;
+  }> = [];
+  private readonly stack: Array<{
+    name: string;
+    attributes: Record<string, string | number | boolean>;
+    events: Array<{
+      name: string;
+      attributes: Record<string, string | number | boolean>;
+    }>;
+  }> = [];
+
+  public async withSpan<T>(
+    name: string,
+    attributes: Record<string, string | number | boolean | null | undefined>,
+    run: (span: ObservabilitySpan) => Promise<T> | T
+  ): Promise<T> {
+    const current = {
+      name,
+      attributes: compactAttributes(attributes),
+      events: []
+    };
+    this.spans.push(current);
+    this.stack.push(current);
+
+    try {
+      return await run({
+        setAttributes: (next) => {
+          Object.assign(current.attributes, compactAttributes(next));
+        },
+        addEvent: (eventName, next) => {
+          current.events.push({
+            name: eventName,
+            attributes: compactAttributes(next ?? {})
+          });
+        }
+      });
+    } finally {
+      this.stack.pop();
+    }
+  }
+
+  public addEvent(name: string, attributes?: Record<string, string | number | boolean | null | undefined>): void {
+    const current = this.stack.at(-1);
+    if (!current) {
+      return;
+    }
+
+    current.events.push({
+      name,
+      attributes: compactAttributes(attributes ?? {})
+    });
+  }
+
+  public async flush(): Promise<void> {}
+}
+
 test('DocSetProcessor retranslates the full document when source hash changes', async (t) => {
   const root = await createTempWorkspace('state-translate');
   t.after(async () => {
@@ -160,6 +225,63 @@ test('DocSetProcessor retranslates the full document when source hash changes', 
   assert.match(targetRaw, /^Second paragraph \(updated\)\.$/m);
   assert.equal(translatedBlocks.length, 0);
   assert.equal(translateBatchCalls, 1);
+});
+
+test('DocSetProcessor attaches aggregated usage to the article translation span', async (t) => {
+  const root = await createTempWorkspace('translate-observability');
+  t.after(async () => {
+    await fs.rm(root, { recursive: true, force: true });
+  });
+
+  const config = await setupWorkspace(
+    root,
+    ['# 欢迎', '', '第一段。', '', '第二段。', ''].join('\n')
+  );
+
+  const provider = new LocalFolderProvider(root, config.ignorePatterns ?? []);
+  const translator = {
+    async translateBlock() {
+      return { text: '', usage: fakeUsage(0) };
+    },
+    async translateBlocks(input: { blocks: Array<{ sourceBlock: string }> }) {
+      return {
+        texts: input.blocks.map((_, index) => `Translated ${index + 1}`),
+        usage: fakeUsage(28)
+      };
+    }
+  } as unknown as Translator;
+  const memoryUpdater = {
+    async judgeLearnCandidates() {
+      return { items: [], usage: fakeUsage(0) };
+    },
+    async mergeRules(input: { memoryText: string }) {
+      return { text: input.memoryText, usage: fakeUsage(0) };
+    },
+    async bootstrapMemory(input: { memoryText: string }) {
+      return { text: input.memoryText, usage: fakeUsage(0) };
+    }
+  } as unknown as MemoryUpdater;
+  const observability = new RecordingObservability();
+
+  const processor = new DocSetProcessor(
+    root,
+    config,
+    provider,
+    translator,
+    memoryUpdater,
+    new Set<string>(),
+    observability
+  );
+
+  await processor.translateDocSet(await loadGuideDocSet(root, config), 'startup', ['en'], { force: true });
+
+  const articleSpan = observability.spans.find((span) => span.name === 'docplaybook.translate.article');
+  assert.ok(articleSpan);
+  assert.equal(articleSpan.attributes['docplaybook.doc_key'], 'docs/guide');
+  assert.equal(articleSpan.attributes['docplaybook.target_language'], 'en');
+  assert.equal(articleSpan.attributes['docplaybook.reason'], 'startup');
+  assert.equal(articleSpan.attributes['docplaybook.force'], true);
+  assert.equal(articleSpan.attributes['docplaybook.total_tokens'], 28);
 });
 
 test('DocSetProcessor learns reusable rules from git-tracked translation edits', async (t) => {
@@ -235,6 +357,14 @@ test('DocSetProcessor learns reusable rules from git-tracked translation edits',
   const memory = await new MemoryStore(root).read('en');
   assert.match(memory, /Translate "知识库" as "Wiki"\./);
 });
+
+function compactAttributes(
+  attributes: Record<string, string | number | boolean | null | undefined>
+): Record<string, string | number | boolean> {
+  return Object.fromEntries(
+    Object.entries(attributes).filter((entry): entry is [string, string | number | boolean] => entry[1] !== undefined && entry[1] !== null)
+  );
+}
 
 test('DocSetProcessor bootstrap builds playbook and memory from aligned docs only', async (t) => {
   const root = await createTempWorkspace('bootstrap');

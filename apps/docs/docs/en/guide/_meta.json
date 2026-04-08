@@ -59,6 +59,11 @@
   },
   {
     "type": "file",
+    "name": "observability",
+    "label": "Observability"
+  },
+  {
+    "type": "file",
     "name": "config",
     "label": "Config"
   },

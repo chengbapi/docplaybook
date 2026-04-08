@@ -22,6 +22,7 @@ import { pathExists, unique } from './utils.js';
 import { WorkspaceAgent } from './service/workspace-agent.js';
 import { createLayoutAdapter } from './layouts/index.js';
 import { LocalFolderProvider } from './providers/local-folder-provider.js';
+import { createObservability } from './observability.js';
 
 function parseTargets(value: string): string[] {
   return value
@@ -59,6 +60,27 @@ function resolveSelectedTargetLanguages(
   }
 
   return requested;
+}
+
+async function withWorkspaceAgent<T>(
+  workspace: string,
+  run: (input: {
+    workspaceRoot: string;
+    config: Awaited<ReturnType<typeof loadConfig>>;
+    agent: WorkspaceAgent;
+  }) => Promise<T>
+): Promise<T> {
+  const workspaceRoot = path.resolve(workspace);
+  await loadWorkspaceEnv(workspaceRoot);
+  const config = await loadConfig(workspaceRoot);
+  const observability = createObservability();
+  const agent = new WorkspaceAgent(workspaceRoot, config, observability);
+
+  try {
+    return await run({ workspaceRoot, config, agent });
+  } finally {
+    await observability.flush();
+  }
 }
 
 const program = new Command();
@@ -265,13 +287,11 @@ program
   .option('--lang <language>', 'Single target language to process')
   .option('--force', 'Ignore saved source-hash state and retranslate all matching targets', false)
   .action(async (workspace, options) => {
-    const workspaceRoot = path.resolve(workspace);
-    await loadWorkspaceEnv(workspaceRoot);
-    const config = await loadConfig(workspaceRoot);
-    const agent = new WorkspaceAgent(workspaceRoot, config);
-    await agent.translateOnceForLanguages(
-      resolveSelectedTargetLanguages(config, options),
-      { force: Boolean(options.force) }
+    await withWorkspaceAgent(workspace, async ({ config, agent }) =>
+      agent.translateOnceForLanguages(
+        resolveSelectedTargetLanguages(config, options),
+        { force: Boolean(options.force) }
+      )
     );
   });
 
@@ -281,13 +301,11 @@ program
   .option('--langs <languages>', 'Comma-separated target languages to process')
   .option('--lang <language>', 'Single target language to process')
   .action(async (workspace, options) => {
-    const workspaceRoot = path.resolve(workspace);
-    await loadWorkspaceEnv(workspaceRoot);
-    const config = await loadConfig(workspaceRoot);
-    const agent = new WorkspaceAgent(workspaceRoot, config);
-    await agent.translateOnceForLanguages(
-      resolveSelectedTargetLanguages(config, options),
-      { force: true }
+    await withWorkspaceAgent(workspace, async ({ config, agent }) =>
+      agent.translateOnceForLanguages(
+        resolveSelectedTargetLanguages(config, options),
+        { force: true }
+      )
     );
   });
 
@@ -349,11 +367,9 @@ program
   .option('--langs <languages>', 'Comma-separated target languages to process')
   .option('--lang <language>', 'Single target language to process')
   .action(async (workspace, options) => {
-    const workspaceRoot = path.resolve(workspace);
-    await loadWorkspaceEnv(workspaceRoot);
-    const config = await loadConfig(workspaceRoot);
-    const agent = new WorkspaceAgent(workspaceRoot, config);
-    await agent.autoOnceForLanguages(resolveSelectedTargetLanguages(config, options));
+    await withWorkspaceAgent(workspace, async ({ config, agent }) =>
+      agent.autoOnceForLanguages(resolveSelectedTargetLanguages(config, options))
+    );
   });
 
 program.parseAsync(process.argv).catch((error: unknown) => {

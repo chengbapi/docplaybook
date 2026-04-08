@@ -14,8 +14,8 @@
     "kind": "rspress"
   },
   "model": {
-    "kind": "gateway",
-    "model": "openai/gpt-5-mini",
-    "apiKeyEnv": "AI_GATEWAY_API_KEY"
+    "kind": "openai",
+    "model": "gpt-5-mini",
+    "apiKeyEnv": "OPENAI_API_KEY"
   }
 }

@@ -24,6 +24,8 @@ import {
   DEFAULT_MAX_CONCURRENT_REQUESTS,
   MAX_MAX_CONCURRENT_REQUESTS
 } from '../config.js';
+import type { DocplaybookObservability } from '../observability.js';
+import { noopObservability } from '../observability.js';
 
 const MAX_BOOTSTRAP_PAIRS_PER_DOC = 12;
 
@@ -38,7 +40,8 @@ export class DocSetProcessor {
     private readonly provider: LocalFolderProvider,
     private readonly translator: Translator,
     private readonly memoryUpdater: MemoryUpdater,
-    private readonly managedWrites: Set<string>
+    private readonly managedWrites: Set<string>,
+    private readonly observability: DocplaybookObservability = noopObservability
   ) {
     this.memoryStore = new MemoryStore(workspaceRoot);
     this.sourceHashStore = new SourceHashStore(workspaceRoot);
@@ -183,6 +186,8 @@ export class DocSetProcessor {
         targetPath,
         targetLanguages: groupedLanguages,
         changedBlockIndexes,
+        reason,
+        force: Boolean(options.force),
         requestPool,
         pathLocks: options.pathLocks
       })
@@ -208,6 +213,8 @@ export class DocSetProcessor {
     targetPath: string;
     targetLanguages: string[];
     changedBlockIndexes: number[];
+    reason: string;
+    force: boolean;
     requestPool: RequestPool;
     pathLocks?: Map<string, Promise<void>>;
   }): Promise<{ usage: ModelUsageStats }> {
@@ -215,17 +222,40 @@ export class DocSetProcessor {
       const usage = zeroUsage();
 
       for (const targetLanguage of input.targetLanguages) {
-        const nextTarget = await input.requestPool.run(() =>
-          this.syncTarget({
-            docSet: input.docSet,
-            sourceSnapshot: input.sourceSnapshot,
-            targetLanguage,
-            changedBlockIndexes: input.changedBlockIndexes,
-            forceFullTranslation: true,
-            requestPool: input.requestPool
-          }),
+        const targetPath = input.docSet.targets[targetLanguage]!.relativePath;
+        const nextTarget = await this.observability.withSpan(
+          'docplaybook.translate.article',
           {
-            label: `${input.docSet.source.relativePath} -> ${input.docSet.targets[targetLanguage]!.relativePath}`
+            'docplaybook.doc_key': input.docSet.docKey,
+            'docplaybook.source_language': this.config.sourceLanguage,
+            'docplaybook.target_language': targetLanguage,
+            'docplaybook.source_path': input.docSet.source.relativePath,
+            'docplaybook.target_path': targetPath,
+            'docplaybook.reason': input.reason,
+            'docplaybook.force': input.force
+          },
+          async (span) => {
+            const startedAt = Date.now();
+            const translatedTarget = await input.requestPool.run(() =>
+              this.syncTarget({
+                docSet: input.docSet,
+                sourceSnapshot: input.sourceSnapshot,
+                targetLanguage,
+                changedBlockIndexes: input.changedBlockIndexes,
+                forceFullTranslation: true,
+                requestPool: input.requestPool
+              }),
+              {
+                label: `${input.docSet.source.relativePath} -> ${targetPath}`
+              }
+            );
+            span.setAttributes({
+              'docplaybook.input_tokens': translatedTarget.usage.inputTokens,
+              'docplaybook.output_tokens': translatedTarget.usage.outputTokens,
+              'docplaybook.total_tokens': translatedTarget.usage.totalTokens,
+              'docplaybook.elapsed_ms': Date.now() - startedAt
+            });
+            return translatedTarget;
           }
         );
         await this.sourceHashStore.set(input.docSet.targets[targetLanguage]!.relativePath, input.sourceHash);
@@ -616,6 +646,10 @@ export class DocSetProcessor {
       console.warn(
         `${label('warning', 'yellow')} Rate limited. Retrying in ${delayMs}ms (attempt ${attempt + 1}/3).`
       );
+      this.observability.addEvent('docplaybook.translate.rate_limit_retry', {
+        'docplaybook.retry_attempt': attempt,
+        'docplaybook.retry_delay_ms': delayMs
+      });
       await sleep(delayMs);
       return this.withRateLimitRetry(task, requestPool, attempt + 1);
     }

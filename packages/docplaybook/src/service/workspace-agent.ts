@@ -13,6 +13,8 @@ import {
   DEFAULT_MAX_CONCURRENT_REQUESTS,
   MAX_MAX_CONCURRENT_REQUESTS
 } from '../config.js';
+import type { DocplaybookObservability } from '../observability.js';
+import { noopObservability } from '../observability.js';
 
 const BOOTSTRAP_PROMPT_THRESHOLD = 50;
 
@@ -26,7 +28,8 @@ export class WorkspaceAgent {
 
   public constructor(
     private readonly workspaceRoot: string,
-    private readonly config: AppConfig
+    private readonly config: AppConfig,
+    private readonly observability: DocplaybookObservability = noopObservability
   ) {
     this.layoutAdapter = createLayoutAdapter(config.layout.kind);
     this.provider = new LocalFolderProvider(workspaceRoot, config.ignorePatterns ?? []);
@@ -35,9 +38,10 @@ export class WorkspaceAgent {
       workspaceRoot,
       config,
       this.provider,
-      new Translator(modelHandle),
+      new Translator(modelHandle, this.observability),
       new MemoryUpdater(modelHandle),
-      this.managedWrites
+      this.managedWrites,
+      this.observability
     );
     this.workspaceLinter = new WorkspaceLinter(
       workspaceRoot,
