@@ -12,7 +12,7 @@ export AI_GATEWAY_API_KEY="your-key"
 pnpm exec docplaybook translate .
 ```
 
-The following table should retain its structure:
+The following table should preserve its structure:
 
 | Field | Description |
 | --- | --- |

@@ -1,5 +1,5 @@
 # Quick Start
 
-Use the Wiki to manage documentation.
+Manage documentation with the Wiki.
 
 Run `docplaybook translate .` to start syncing.

@@ -1,8 +1,8 @@
-# Terminology consistency
+# Terminology Consistency
 
 In the Wiki, you can create separate spaces for different tenants.
 
-If the team has decided to translate "知识库" as "Wiki", all subsequent pages should remain consistent.
+If the team has already decided to translate "知识库" as "Wiki", all subsequent pages should remain consistent.
 
 Do not translate the following:
 
@@ -10,4 +10,4 @@ Do not translate the following:
 - `AI_GATEWAY_API_KEY`
 - `.docplaybook/config.json`
 
-See [Quick Start](./short.md) for more details.
+See the [Quick Start](./short.md) for more information.
