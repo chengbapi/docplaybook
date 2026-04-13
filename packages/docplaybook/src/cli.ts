@@ -19,7 +19,7 @@ import { canPrompt, confirmSourceLanguage, promptBootstrapNow, promptTargetLangu
 import type { LayoutKind, ModelKind } from './types.js';
 import { bold, cyan, green, label, setColorEnabled, setDebugEnabled, setVerboseEnabled, yellow } from './ui.js';
 import { pathExists, unique } from './utils.js';
-import { WorkspaceAgent } from './service/workspace-agent.js';
+import { WorkspaceAgent, resolveWorkspaceAndPath } from './service/workspace-agent.js';
 import { createLayoutAdapter } from './layouts/index.js';
 import { LocalFolderProvider } from './providers/local-folder-provider.js';
 import { createObservability } from './observability.js';
@@ -62,26 +62,6 @@ function resolveSelectedTargetLanguages(
   return requested;
 }
 
-async function withWorkspaceAgent<T>(
-  workspace: string,
-  run: (input: {
-    workspaceRoot: string;
-    config: Awaited<ReturnType<typeof loadConfig>>;
-    agent: WorkspaceAgent;
-  }) => Promise<T>
-): Promise<T> {
-  const workspaceRoot = path.resolve(workspace);
-  await loadWorkspaceEnv(workspaceRoot);
-  const config = await loadConfig(workspaceRoot);
-  const observability = createObservability();
-  const agent = new WorkspaceAgent(workspaceRoot, config, observability);
-
-  try {
-    return await run({ workspaceRoot, config, agent });
-  } finally {
-    await observability.flush();
-  }
-}
 
 const program = new Command();
 
@@ -282,94 +262,54 @@ program
 
 program
   .command('translate')
-  .argument('[workspace]', 'Workspace folder to translate', '.')
+  .argument('[path]', 'Workspace root or path to a file/directory within the workspace', '.')
   .option('--langs <languages>', 'Comma-separated target languages to process')
   .option('--lang <language>', 'Single target language to process')
   .option('--force', 'Ignore saved source-hash state and retranslate all matching targets', false)
-  .action(async (workspace, options) => {
-    await withWorkspaceAgent(workspace, async ({ config, agent }) =>
-      agent.translateOnceForLanguages(
+  .option('--dry', 'Preview what would be translated without calling any LLM', false)
+  .action(async (rawPath, options) => {
+    const { workspaceRoot, pathFilter } = await resolveWorkspaceAndPath(rawPath);
+    await loadWorkspaceEnv(workspaceRoot);
+    const config = await loadConfig(workspaceRoot);
+    const observability = createObservability();
+    const agent = new WorkspaceAgent(workspaceRoot, config, observability);
+    try {
+      await agent.translateOnceForLanguages(
         resolveSelectedTargetLanguages(config, options),
-        { force: Boolean(options.force) }
-      )
-    );
-  });
-
-program
-  .command('retranslate')
-  .argument('[workspace]', 'Workspace folder to retranslate from scratch', '.')
-  .option('--langs <languages>', 'Comma-separated target languages to process')
-  .option('--lang <language>', 'Single target language to process')
-  .action(async (workspace, options) => {
-    await withWorkspaceAgent(workspace, async ({ config, agent }) =>
-      agent.translateOnceForLanguages(
-        resolveSelectedTargetLanguages(config, options),
-        { force: true }
-      )
-    );
+        { force: Boolean(options.force), dry: Boolean(options.dry), pathFilter }
+      );
+    } finally {
+      await observability.flush();
+    }
   });
 
 program
   .command('learn')
-  .argument('[workspace]', 'Workspace folder to learn from current translated documents', '.')
+  .argument('[path]', 'Workspace root or path to a file/directory within the workspace', '.')
   .option('--langs <languages>', 'Comma-separated target languages to process')
   .option('--lang <language>', 'Single target language to process')
   .option('--force', 'Ignore saved learned-target state and relearn all matching targets', false)
-  .action(async (workspace, options) => {
-    const workspaceRoot = path.resolve(workspace);
+  .option('--no-interactive', 'Save all candidates automatically without confirmation')
+  .action(async (rawPath, options) => {
+    const { workspaceRoot, pathFilter } = await resolveWorkspaceAndPath(rawPath);
     await loadWorkspaceEnv(workspaceRoot);
     const config = await loadConfig(workspaceRoot);
     const agent = new WorkspaceAgent(workspaceRoot, config);
     await agent.learnOnceForLanguages(
       resolveSelectedTargetLanguages(config, options),
-      { force: Boolean(options.force) }
+      { force: Boolean(options.force), interactive: Boolean(options.interactive), pathFilter }
     );
   });
 
 program
-  .command('relearn')
-  .argument('[workspace]', 'Workspace folder to relearn from current translated documents', '.')
-  .option('--langs <languages>', 'Comma-separated target languages to process')
-  .option('--lang <language>', 'Single target language to process')
-  .action(async (workspace, options) => {
+  .command('status')
+  .argument('[workspace]', 'Workspace folder to inspect', '.')
+  .action(async (workspace) => {
     const workspaceRoot = path.resolve(workspace);
     await loadWorkspaceEnv(workspaceRoot);
     const config = await loadConfig(workspaceRoot);
     const agent = new WorkspaceAgent(workspaceRoot, config);
-    await agent.learnOnceForLanguages(
-      resolveSelectedTargetLanguages(config, options),
-      { force: true }
-    );
-  });
-
-program
-  .command('lint')
-  .argument('[workspace]', 'Workspace folder to lint translated docs', '.')
-  .option('--fix', 'Automatically apply block-safe lint fixes', false)
-  .option('--scope <scope>', 'Lint scope: changed or all', 'changed')
-  .option('--langs <languages>', 'Comma-separated target languages to process')
-  .option('--lang <language>', 'Single target language to process')
-  .action(async (workspace, options) => {
-    const workspaceRoot = path.resolve(workspace);
-    await loadWorkspaceEnv(workspaceRoot);
-    const config = await loadConfig(workspaceRoot);
-    const agent = new WorkspaceAgent(workspaceRoot, config);
-    const scope = options.scope === 'all' ? 'all' : 'changed';
-    await agent.lintOnceForLanguages(
-      Boolean(options.fix),
-      scope,
-      resolveSelectedTargetLanguages(config, options)
-    );
-  });
-
-program
-  .argument('[workspace]', 'Workspace folder to run the default local workflow', '.')
-  .option('--langs <languages>', 'Comma-separated target languages to process')
-  .option('--lang <language>', 'Single target language to process')
-  .action(async (workspace, options) => {
-    await withWorkspaceAgent(workspace, async ({ config, agent }) =>
-      agent.autoOnceForLanguages(resolveSelectedTargetLanguages(config, options))
-    );
+    await agent.statusForWorkspace();
   });
 
 program.parseAsync(process.argv).catch((error: unknown) => {

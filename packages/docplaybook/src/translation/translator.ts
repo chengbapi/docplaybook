@@ -72,6 +72,17 @@ export class Translator {
           'docplaybook.total_tokens': usage.totalTokens
         });
 
+        this.observability.logGeneration({
+          docKey: context.docKey,
+          targetLanguage: context.targetLanguage,
+          callMode: 'single',
+          modelLabel: this.modelHandle.label,
+          systemPrompt,
+          userPrompt: prompt,
+          output: result.text,
+          usage
+        });
+
         return {
           text: stripOuterMarkdownFence(result.text.trim()),
           usage
@@ -84,6 +95,7 @@ export class Translator {
     sourceLanguage: string;
     targetLanguage: string;
     memoryText: string;
+    glossaryText?: string;
     docKey: string;
     blocks: Array<{
       index: number;
@@ -124,6 +136,7 @@ export class Translator {
     sourceLanguage: string;
     targetLanguage: string;
     memoryText: string;
+    glossaryText?: string;
     docKey: string;
     blocks: Array<{
       index: number;
@@ -140,6 +153,7 @@ export class Translator {
       sourceLanguage: input.sourceLanguage,
       targetLanguage: input.targetLanguage,
       memoryText: input.memoryText,
+      glossaryText: input.glossaryText,
       sourceBlock: '',
       docKey: input.docKey
     });
@@ -203,6 +217,17 @@ export class Translator {
             `batch ${input.targetLanguage} success for ${input.docKey}: blocks=${blocksWithIds.length}, sourceChars=${totalSourceChars}, elapsedMs=${Date.now() - batchStartedAt}.`
           );
 
+          this.observability.logGeneration({
+            docKey: input.docKey,
+            targetLanguage: input.targetLanguage,
+            callMode: 'batch',
+            modelLabel: this.modelHandle.label,
+            systemPrompt,
+            userPrompt: prompt,
+            output: result.text,
+            usage
+          });
+
           return {
             texts,
             usage
@@ -230,6 +255,7 @@ export class Translator {
     sourceLanguage: string;
     targetLanguage: string;
     memoryText: string;
+    glossaryText?: string;
     docKey: string;
     blocks: Array<{
       index: number;
@@ -251,6 +277,7 @@ export class Translator {
         sourceLanguage: input.sourceLanguage,
         targetLanguage: input.targetLanguage,
         memoryText: input.memoryText,
+        glossaryText: input.glossaryText,
         sourceBlock: block.sourceBlock,
         existingTranslation: block.existingTranslation,
         docKey: input.docKey

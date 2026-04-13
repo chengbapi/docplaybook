@@ -100,6 +100,7 @@ export interface TranslationContext {
   sourceLanguage: string;
   targetLanguage: string;
   memoryText: string;
+  glossaryText?: string;
   sourceBlock: string;
   existingTranslation?: string;
   docKey: string;
@@ -125,7 +126,7 @@ export interface LearnJudgement {
   docKey: string;
   blockIndex: number;
   shouldLearn: boolean;
-  scope: 'playbook' | 'memory' | 'ignore';
+  scope: 'playbook' | 'memory' | 'glossary' | 'ignore';
   category:
     | 'terminology'
     | 'style'
@@ -153,6 +154,18 @@ export interface ModelUsageStats {
   inputTokens: number;
   outputTokens: number;
   totalTokens: number;
+}
+
+export interface DocSetTranslateResult {
+  skipped: boolean;
+  sourcePath: string;
+  perLanguage: Array<{
+    targetLanguage: string;
+    elapsedMs: number;
+    totalTokens: number;
+    memoryRulesInjected: number;
+    glossaryPatches: number;
+  }>;
 }
 
 export interface TranslationResult {

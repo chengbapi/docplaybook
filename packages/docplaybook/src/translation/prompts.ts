@@ -6,7 +6,7 @@ import type {
 } from '../types.js';
 
 export function buildTranslationSystemPrompt(context: TranslationContext): string {
-  return [
+  const lines = [
     `You are a documentation translation agent.`,
     `Translate from ${context.sourceLanguage} to ${context.targetLanguage}.`,
     'Preserve Markdown structure, links, emphasis, and inline code.',
@@ -17,7 +17,15 @@ export function buildTranslationSystemPrompt(context: TranslationContext): strin
     '',
     'Project translation guidance:',
     context.memoryText.trim() || '(empty)'
-  ].join('\n');
+  ];
+
+  if (context.glossaryText?.trim()) {
+    lines.push('');
+    lines.push('Glossary (use these exact term translations):');
+    lines.push(context.glossaryText.trim());
+  }
+
+  return lines.join('\n');
 }
 
 export function buildTranslationPrompt(context: TranslationContext): string {
@@ -160,9 +168,17 @@ export function buildLearnJudgePrompt(input: {
   return [
     `You review translated documentation from ${input.sourceLanguage} to ${input.targetLanguage}.`,
     'Extract reusable translation guidance from the current source and target documents.',
-    'Write to scope "playbook" only for cross-language reusable guidance.',
-    'Write to scope "memory" only for target-language-specific terminology or style guidance.',
-    'Use scope "ignore" for page-specific content, one-off phrasing, or unclear observations.',
+    '',
+    'Scope rules:',
+    '- "glossary": A deterministic term mapping — the same source phrase always maps to the same target phrase.',
+    '  Format proposedRule as: "source term" → "target term"',
+    '  Example: "Pull Request" → "Pull Request"  or  "API" → "API"',
+    '- "memory": Contextual or stylistic guidance that needs LLM judgment to apply.',
+    '  Format proposedRule as a concise rule sentence starting with "-".',
+    '  Example: - Use 「应当」instead of 「应该」in technical documentation.',
+    '- "playbook": Cross-language guidance applicable to all target languages. Same format as memory.',
+    '- "ignore": Page-specific content, one-off phrasing, or observations too vague to be reusable.',
+    '',
     'Return strict JSON only with this shape:',
     '{"items":[{"docKey":"...","blockIndex":1,"shouldLearn":true,"scope":"memory","category":"terminology","reason":"...","proposedRule":"..."}]}',
     '',

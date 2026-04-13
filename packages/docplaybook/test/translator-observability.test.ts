@@ -62,6 +62,8 @@ class RecordingObservability implements DocplaybookObservability {
     });
   }
 
+  public logGeneration(): void {}
+
   public async flush(): Promise<void> {}
 }
 

@@ -8,6 +8,7 @@ import { promisify } from 'node:util';
 import { initWorkspaceConfig } from '../src/config.ts';
 import { getLearnedTargetHashesPath, getSourceHashesPath } from '../src/config.ts';
 import { createLayoutAdapter } from '../src/layouts/index.ts';
+import { GlossaryStore } from '../src/memories/glossary-store.ts';
 import { MemoryStore } from '../src/memories/memory-store.ts';
 import { LocalFolderProvider } from '../src/providers/local-folder-provider.ts';
 import { DocSetProcessor } from '../src/service/docset-processor.ts';
@@ -151,6 +152,8 @@ class RecordingObservability implements DocplaybookObservability {
       attributes: compactAttributes(attributes ?? {})
     });
   }
+
+  public logGeneration(): void {}
 
   public async flush(): Promise<void> {}
 }
@@ -731,4 +734,100 @@ test('DocSetProcessor relearns when force is enabled even if learned-target hash
   await processor.learnWorkspace([await loadGuideDocSet(root, config)], ['en'], { force: true });
 
   assert.equal(judgedCalls, 1);
+});
+
+test('DocSetProcessor injects glossary terms into translator calls', async (t) => {
+  const root = await createTempWorkspace('glossary-inject');
+  t.after(async () => {
+    await fs.rm(root, { recursive: true, force: true });
+  });
+
+  const config = await setupWorkspace(
+    root,
+    ['# 欢迎', '', '打开工作区。', ''].join('\n')
+  );
+
+  // Write a glossary with one term
+  const glossaryStore = new GlossaryStore(root);
+  await glossaryStore.mergeEntry('en', '工作区', 'workspace');
+
+  const provider = new LocalFolderProvider(root, config.ignorePatterns ?? []);
+  const capturedGlossaryTexts: Array<string | undefined> = [];
+  const translator = {
+    async translateBlock(context: TranslationContext) {
+      capturedGlossaryTexts.push(context.glossaryText);
+      return { text: context.sourceBlock, usage: fakeUsage(0) };
+    },
+    async translateBlocks(input: { glossaryText?: string; blocks: Array<{ sourceBlock: string }> }) {
+      capturedGlossaryTexts.push(input.glossaryText);
+      return { texts: input.blocks.map((b) => b.sourceBlock), usage: fakeUsage(0) };
+    }
+  } as unknown as Translator;
+  const memoryUpdater = {
+    async judgeLearnCandidates() { return { items: [], usage: fakeUsage(0) }; },
+    async mergeRules(input: { memoryText: string }) { return { text: input.memoryText, usage: fakeUsage(0) }; },
+    async bootstrapMemory(input: { memoryText: string }) { return { text: input.memoryText, usage: fakeUsage(0) }; }
+  } as unknown as MemoryUpdater;
+
+  const processor = new DocSetProcessor(root, config, provider, translator, memoryUpdater, new Set<string>());
+  await processor.translateDocSet(await loadGuideDocSet(root, config), 'test', ['en'], { force: true });
+
+  assert.ok(capturedGlossaryTexts.length > 0, 'translator should have been called');
+  assert.ok(
+    capturedGlossaryTexts.every((g) => g?.includes('"工作区" → "workspace"')),
+    'glossary text should contain the term mapping'
+  );
+});
+
+test('DocSetProcessor learn routes glossary-scoped items to GlossaryStore', async (t) => {
+  const root = await createTempWorkspace('learn-glossary-route');
+  t.after(async () => {
+    await fs.rm(root, { recursive: true, force: true });
+  });
+
+  await initGitRepo(root);
+  const config = await setupWorkspace(
+    root,
+    ['# 欢迎', '', '使用知识库。', ''].join('\n'),
+    ['# Welcome', '', 'Use Wiki.', ''].join('\n')
+  );
+  await commitAll(root, 'initial docs');
+
+  await fs.writeFile(
+    path.join(root, 'docs/guide.en.md'),
+    ['# Welcome', '', 'Use Wiki.', ''].join('\n'),
+    'utf8'
+  );
+
+  const provider = new LocalFolderProvider(root, config.ignorePatterns ?? []);
+  const memoryUpdater = {
+    async judgeLearnCandidates(input: { candidates: LearnCandidate[] }) {
+      const items: LearnJudgement[] = input.candidates.map((candidate) => ({
+        docKey: candidate.docKey,
+        blockIndex: 1,
+        shouldLearn: true,
+        scope: 'glossary' as const,
+        category: 'terminology' as const,
+        reason: 'Deterministic term mapping.',
+        proposedRule: '"知识库" → "Wiki"'
+      }));
+      return { items, usage: fakeUsage(20) };
+    },
+    async mergeRules(input: { memoryText: string }) {
+      return { text: input.memoryText, usage: fakeUsage(0) };
+    },
+    async bootstrapMemory(input: { memoryText: string }) {
+      return { text: input.memoryText, usage: fakeUsage(0) };
+    }
+  } as unknown as MemoryUpdater;
+  const translator = {
+    async translateBlock() { return { text: '', usage: fakeUsage(0) }; },
+    async translateBlocks() { return { texts: [], usage: fakeUsage(0) }; }
+  } as unknown as Translator;
+
+  const processor = new DocSetProcessor(root, config, provider, translator, memoryUpdater, new Set<string>());
+  await processor.learnWorkspace([await loadGuideDocSet(root, config)], ['en']);
+
+  const glossary = await new GlossaryStore(root).load('en');
+  assert.equal(glossary['知识库'], 'Wiki');
 });

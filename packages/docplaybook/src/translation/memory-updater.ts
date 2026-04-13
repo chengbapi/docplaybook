@@ -123,11 +123,27 @@ function normalizeScope(value: unknown): LearnJudgement['scope'] {
   switch (value) {
     case 'playbook':
     case 'memory':
+    case 'glossary':
     case 'ignore':
       return value;
     default:
       return 'ignore';
   }
+}
+
+export function parseGlossaryRule(rule: string): { source: string; target: string } | null {
+  // Accepts: "source" → "target"  or  "source" -> "target"  or  source → target
+  const quoted = rule.match(/^"(.+?)"\s*(?:→|->)\s*"(.+?)"$/);
+  if (quoted) {
+    return { source: quoted[1]!.trim(), target: quoted[2]!.trim() };
+  }
+
+  const unquoted = rule.match(/^(.+?)\s*(?:→|->)\s*(.+?)$/);
+  if (unquoted) {
+    return { source: unquoted[1]!.trim(), target: unquoted[2]!.trim() };
+  }
+
+  return null;
 }
 
 function normalizeCategory(value: unknown): LearnJudgement['category'] {

@@ -46,6 +46,11 @@
     "label": "CI and GitHub"
   },
   {
+    "type": "file",
+    "name": "github-action",
+    "label": "GitHub Action"
+  },
+  {
     "type": "divider"
   },
   {

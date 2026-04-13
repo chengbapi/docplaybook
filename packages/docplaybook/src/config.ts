@@ -72,7 +72,9 @@ export const CONFIG_DIRNAME = '.docplaybook';
 export const CONFIG_BASENAME = 'config.json';
 export const MEMORIES_DIRNAME = 'memories';
 export const PLAYBOOK_BASENAME = 'playbook.md';
+export const GLOSSARY_DIRNAME = 'glossary';
 export const STATE_DIRNAME = 'state';
+export const CACHE_DIRNAME = 'cache';
 export const SOURCE_HASHES_BASENAME = 'source-hashes.json';
 export const LEARNED_TARGET_HASHES_BASENAME = 'learned-target-hashes.json';
 export const DEFAULT_IGNORE_PATTERNS = [
@@ -102,8 +104,20 @@ export function getPlaybookPath(workspaceRoot: string): string {
   return path.join(getConfigDir(workspaceRoot), PLAYBOOK_BASENAME);
 }
 
+export function getGlossaryDir(workspaceRoot: string): string {
+  return path.join(getConfigDir(workspaceRoot), GLOSSARY_DIRNAME);
+}
+
+export function getGlossaryPath(workspaceRoot: string, lang: string): string {
+  return path.join(getGlossaryDir(workspaceRoot), `${lang}.json`);
+}
+
 export function getStateDir(workspaceRoot: string): string {
   return path.join(getConfigDir(workspaceRoot), STATE_DIRNAME);
+}
+
+export function getCacheDir(workspaceRoot: string): string {
+  return path.join(getConfigDir(workspaceRoot), CACHE_DIRNAME);
 }
 
 export function getSourceHashesPath(workspaceRoot: string): string {
@@ -253,6 +267,13 @@ export async function initWorkspaceConfig(options: InitOptions): Promise<void> {
 
   await ensureDir(configDir);
   await ensureDir(getMemoriesDir(options.workspaceRoot));
+  await ensureDir(getGlossaryDir(options.workspaceRoot));
+  await ensureDir(getCacheDir(options.workspaceRoot));
+
+  const gitignorePath = path.join(getConfigDir(options.workspaceRoot), '.gitignore');
+  if (!(await pathExists(gitignorePath))) {
+    await fs.writeFile(gitignorePath, '.env*\ncache/\n', 'utf8');
+  }
 
   const config: StoredAppConfig = {
     version: 1,

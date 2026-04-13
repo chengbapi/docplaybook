@@ -2,133 +2,150 @@ import PackageManagerTabs from '../../../theme/components/PackageManagerTabs';
 
 # Quick Start
 
-## Install in your project
+## 1. Install
 
-If you are integrating DocPlaybook into an existing docs project, installing it as a dev dependency is usually the best fit.
+Install DocPlaybook globally or as a dev dependency in your docs project.
+
+**Global install:**
+
+```bash
+npm install -g docplaybook
+```
+
+**Dev dependency (recommended for team projects):**
 
 <PackageManagerTabs variant="help" />
 
-## Initialize the project
+After installing as a dev dependency, prefix commands with your package manager's exec command (e.g. `pnpm exec docplaybook`).
 
-After installation, the first real step is:
+## 2. Initialize your workspace
+
+Run `init` in your docs repo root:
 
 ```bash
-pnpm exec docplaybook init .
+docplaybook init .
 ```
 
-`DocPlaybook` is designed so that initialization is mostly the same across projects. If your docs already use `Docusaurus`, `Rspress`, or `VitePress`, DocPlaybook detects that and applies the matching path convention internally.
+DocPlaybook will:
 
-If no supported docs framework is detected, it falls back to `sibling`.
-
-During `init`, DocPlaybook will:
-
-- detect the workspace layout when possible
-- choose a model provider and model
-- collect the required credentials
-- test model connectivity
-- detect the source language
-- ask for target languages
+- detect your docs framework (Docusaurus, Rspress, VitePress, or fall back to `sibling`)
+- prompt for source language and target languages
+- prompt for model provider and model name
+- prompt for the API key environment variable name
+- run a connectivity check to confirm the model is reachable
 - create `.docplaybook/config.json`
-- create `.docplaybook/memories/*.md`
+- create `.docplaybook/memories/<lang>.md` for each target language
 - create `.docplaybook/playbook.md`
+- create `.docplaybook/.gitignore` (excludes cache and `.env*` files)
 
-If translated target files already exist, `init` will also suggest running `bootstrap` so the first playbook and language memories can be inferred from those existing docs.
-
-After translation and learning runs begin, DocPlaybook also maintains `.docplaybook/state/*.json`. Those files track branch progress and are meant to be committed with the branch.
-
-## Bootstrap existing translated docs
-
-If the repository already contains aligned translated docs, run `bootstrap` after `init`:
+You can also pass options directly to skip the prompts:
 
 ```bash
-pnpm exec docplaybook bootstrap . --langs ja
+docplaybook init . --source en --targets zh,ja --model-kind openai --model gpt-4o --api-key-env OPENAI_API_KEY
 ```
 
-Use `bootstrap` to infer the initial project guidance from existing translations:
+If your repo already contains translated docs, `init` will suggest running `bootstrap` to seed the initial memory files from those existing translations. See [bootstrap](/guide/commands#docplaybook-bootstrap) for details.
 
-- `.docplaybook/playbook.md`
-- `.docplaybook/memories/<lang>.md`
+## 3. Preview with --dry
 
-After that, normal maintenance uses `translate`, `learn`, and `lint`.
+Before making any LLM calls, run a dry-run to see what would be translated and get a token cost estimate:
 
-## Provider setup
-
-DocPlaybook is AI-powered and LLM-based, so provider setup is part of initialization.
-
-During init, you will:
-
-- choose the provider
-- choose the model id
-- provide credentials
-- run a connectivity check
-
-You can choose the provider that fits your team. DocPlaybook does not require one specific provider family.
-
-In team workflows, many projects lock provider and model in config so local runs and CI runs stay consistent.
-
-## Layouts and framework conventions
-
-The user flow stays the same, but the output layout depends on what DocPlaybook detects:
-
-```text
-sibling:
-guide.md
-guide.en.md
-guide.ja.md
-
-docusaurus:
-docs/guide/intro.md
-i18n/en/docusaurus-plugin-content-docs/current/guide/intro.md
-
-rspress:
-docs/en/guide/intro.md
-docs/ja/guide/intro.md
-
-vitepress:
-docs/guide/intro.md
-docs/en/guide/intro.md
+```bash
+docplaybook translate --dry
 ```
 
-### Docusaurus
+This shows every file that is stale or missing, grouped by target language, along with an estimated token count. No API calls are made.
 
-When DocPlaybook detects `Docusaurus`, it writes translated docs into:
+## 4. Run your first translation
 
-```text
-i18n/<locale>/docusaurus-plugin-content-docs/current/
+```bash
+docplaybook translate
 ```
 
-This follows the official Docusaurus docs i18n structure.
+DocPlaybook will translate all stale and missing files. It skips any file whose source hash matches the last recorded translation, so re-running is always safe and cheap.
 
-### Rspress
+To translate a specific file or subdirectory:
 
-When DocPlaybook detects `Rspress`, it writes translated docs into:
-
-```text
-docs/<locale>/
+```bash
+docplaybook translate docs/guide/introduction.md
+docplaybook translate docs/guide/
 ```
 
-This should be understood as a DocPlaybook integration convention for Rspress.
+To limit to specific languages:
 
-### VitePress
-
-When DocPlaybook detects `VitePress`, it writes translated docs into:
-
-```text
-docs/<locale>/
+```bash
+docplaybook translate --langs zh,ja
 ```
 
-This follows the common localized docs layout used in VitePress projects.
+## 5. Review translations and make edits
 
-### Sibling
+Open the translated files and review them. Correct any terminology, phrasing, or style issues directly in the target files.
 
-If no supported docs framework is detected, DocPlaybook falls back to `sibling`, where translated files sit next to the source file:
+DocPlaybook will detect these edits on the next `learn` run based on file content hashes — you do not need to track diffs manually.
 
-```text
-guide.md
-guide.en.md
-guide.ja.md
+## 6. Run learn to capture your edits
+
+After reviewing and editing translations, run:
+
+```bash
+docplaybook learn
 ```
+
+DocPlaybook reads the current source and target files for any target that has changed since the last `learn` run. It asks the LLM to classify what it observes into four categories:
+
+- **glossary** — deterministic term pairs to always apply
+- **memory** — per-language style rules
+- **playbook** — cross-language rules
+- **ignore** — not a reusable rule
+
+In interactive mode (the default when running in a terminal), each candidate is shown one at a time. You can accept it, edit it, skip it, or quit. Accepted rules are written to the appropriate knowledge asset file.
+
+In CI or non-interactive environments, use `--no-interactive` to auto-save all candidates:
+
+```bash
+docplaybook learn --no-interactive
+```
+
+## 7. Check translation status
+
+```bash
+docplaybook status
+```
+
+This shows translation completion per language: how many files are up to date, stale, or missing. It also shows how many memory rules and glossary terms have been collected. If any files are stale or missing, it suggests running `translate`.
+
+## 8. Add the GitHub Action for automation
+
+To keep translations in sync automatically whenever source docs change, add the DocPlaybook GitHub Action to your repo.
+
+Create `.github/workflows/translate.yml`:
+
+```yaml
+name: Translate docs
+on:
+  push:
+    branches: [main]
+    paths: ['docs/**/*.md']
+jobs:
+  translate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docplaybook/docplaybook@v1
+        with:
+          working-directory: '.'
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+```
+
+Add your API key as a repository secret under **Settings > Secrets and variables > Actions**.
+
+See [GitHub Action](/guide/github-action) for the full setup guide including optional inputs and multi-language configuration.
 
 ## What to do next
 
-Continue with [Commands](/guide/commands).
+- [Commands](/guide/commands) — full CLI reference with all flags
+- [GitHub Action](/guide/github-action) — full automation setup
+- [Memory](/guide/memory) — how knowledge assets work and how to edit them

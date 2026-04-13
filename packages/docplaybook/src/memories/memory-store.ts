@@ -74,6 +74,15 @@ export class MemoryStore {
     ].join('\n');
   }
 
+  public async countRules(targetLanguage: string): Promise<number> {
+    const [playbookText, memoryText] = await Promise.all([
+      this.readPlaybook(),
+      this.read(targetLanguage)
+    ]);
+    const allText = `${playbookText}\n${memoryText}`;
+    return allText.split('\n').filter((line) => line.trimStart().startsWith('- ') && line.trim().length > 2).length;
+  }
+
   public async readPromptContext(targetLanguage: string): Promise<string> {
     const [playbookText, memoryText] = await Promise.all([
       this.readPlaybook(),

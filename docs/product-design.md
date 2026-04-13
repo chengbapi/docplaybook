@@ -43,7 +43,6 @@ docplaybook init [workspace]              一次性设置
 docplaybook bootstrap [workspace]         一次性冷启动学习
 docplaybook translate [path]              核心:同步源到译
     --dry                                 零成本预览
-    --interactive                         每批确认
     --force                               忽略 hash,强制重翻
     --langs zh,ja                         语言筛选
 docplaybook learn [path]                  核心:沉淀人改为规则
@@ -69,7 +68,6 @@ docplaybook status                        只读:可见性
 **参数**:
 - `[path]` —— 作用域控制。可选,默认整个 workspace。例:`translate docs/api/`、`translate docs/api/users.md`。
 - `--dry` —— **零成本预览**。不调任何 LLM,纯本地计算。
-- `--interactive` —— 调 LLM 但每批前询问用户。
 - `--force` —— 忽略 source hash,强制重翻指定范围内的所有文件。
 - `--langs zh,ja` —— 限定目标语言。
 
@@ -79,7 +77,8 @@ docplaybook status                        只读:可见性
 2. 比对 source hash → 算出 missing/stale
 3. 数 block 数、字符数 → 用 tiktoken 估 token
 4. 查模型定价表 → 算成本
-5. 输出报告,结束
+5. 读取当前 memory 文件 → 展示会被注入的规则条数
+6. 输出报告,结束
 ```
 
 **0 次 LLM 调用**。这是 `--dry` 的全部意义:让用户在按下"真的执行"之前,**用零成本看清要发生什么**。
@@ -90,25 +89,46 @@ docplaybook translate --dry --langs zh
 
 Plan (no LLM calls made):
   docs/guide/intro.md       [stale]    8 blocks  ~1.2k tok
+    memory rules (zh): 3 rules will be injected
   docs/guide/auth.md        [missing] 12 blocks  ~2.0k tok
+    memory rules (zh): 3 rules will be injected
   docs/api/users.md         [stale]    3 blocks  ~0.4k tok
+    memory rules (zh): 3 rules will be injected
 
 Total: 3 files, 23 blocks, ~3.6k input tokens
 Estimated cost: $0.04 (gpt-4o-mini)
 Run without --dry to execute.
 ```
 
-**翻译完成后必须输出 summary**:
-- 翻译了哪些文件
-- 用了多少 token、多少钱、耗时
-- **命中了哪些 memory 规则 / glossary 条目**(让 memory 这个核心差异点被看见)
-- 哪些块走了 batch fallback(暗示模型不稳定)
+**Glossary 后处理**:翻译完成后,对所有译文块做 glossary 校验并**自动 patch**。这是纯字符串替换,确定性操作,无需 LLM。patch 结果在 summary 里展示。
+
+**翻译完成后输出 summary**，在所有文件处理完毕后**一次性输出**，每个文件一条记录：
+
+```
+docplaybook translate --langs zh
+
+[translate] docs/guide/intro.md     zh  4210ms  1.2k tok  memory:2  glossary:1
+[translate] docs/guide/auth.md      zh  3890ms  2.0k tok  memory:3  glossary:0
+[translate] docs/api/users.md       zh  1240ms  0.4k tok  memory:1  glossary:2
+
+Summary:
+  3 files translated  ·  3.6k tokens  ·  $0.04  ·  9.3s
+  Memory rules applied: 6 hits across 3 files
+  Glossary patches: 3 terms auto-corrected
+  Batch fallback: 0
+```
+
+字段说明：
+- 每文件：文件路径、目标语言、耗时、token 数、memory 命中条数、glossary patch 条数
+- 汇总：文件数、总 token、总费用、总耗时、memory 命中总数、glossary patch 总数、batch fallback 次数（>0 时提示模型不稳定）
 
 ### 4.2 `learn` —— 产品的灵魂
 
 日常使用占比 10%,但每次执行都在为团队积累资产。
 
-**职责**:读取人改过的译文,从中提取可复用的规则,分类后写入 glossary 或 memory。
+**职责**:从作者认可的译文中提取可复用的规则,分类后写入 glossary 或 memory。
+
+运行 `learn` 本身就是作者的显式声明:「我信任当前译文的内容,请从中学习。」工具不区分哪些是 AI 翻译的、哪些是人工改过的——作者既然触发了 learn,就代表对整篇译文背书。
 
 **参数**:
 - `[path]` —— 作用域控制
@@ -155,7 +175,7 @@ Skipped 1.
 
 **责任边界(必须在 README 显著位置说明)**:
 
-> ⚠️ 运行 `learn` 之前,请确认你已经在编辑器里审核过译文。learn 会从你的修改中提取规则,如果未审核就跑,AI 可能在学习自己写错的内容。**`learn` 的语义是"我审完了,从我的修改中学吧"**。
+> ⚠️ 运行 `learn` 之前,请确认你已经审核过译文并对内容满意。**`learn` 的语义是"我认可这篇译文,请从中提取经验"**。未审核就运行,工具会从你尚未确认的内容中学习。
 
 工具不做技术兜底,边界由用户的显式动作来定义。
 
@@ -263,7 +283,28 @@ State 文件**进仓库**,理由:
 
 ---
 
-## 6. 已经决定不做的事
+## 6. 工程约定
+
+### 6.1 Exit Codes
+
+```
+0  成功,所有目标文件均为最新
+1  执行出错(LLM 调用失败、配置错误等)
+2  成功执行,但仍有 stale/missing 文件(部分完成)
+```
+
+`exit 2` 让 CI 可以感知"翻译未完成"而不是"工具报错",是 GitHub Action 集成的基础。
+
+### 6.2 错误重试
+
+LLM 调用失败时的重试范围：
+- **429 Rate Limit**：重试,最多 3 次,指数退避(500ms / 1s / 2s),并通知 request pool 降并发
+- **5xx Server Error / 连接错误**：同样重试,逻辑复用 429 的重试框架
+- **4xx(非 429)**：不重试,直接报错
+
+---
+
+## 7. 已经决定不做的事
 
 记录"不做什么"和"做什么"同样重要。这些是讨论中明确否决的功能:
 
@@ -277,6 +318,7 @@ State 文件**进仓库**,理由:
 | **隐式失效**(memory 变后自动 stale) | 太魔法,违反"可见 > 自动"原则。 |
 | **`lint` 命令** | 与 translate 概念重叠,UX 模糊。能力分散到 `--dry` / `--force`。 |
 | **`retranslate` / `relearn` 命令** | 合并为 `--force` flag。 |
+| **`translate --interactive`**(翻译前逐批确认) | 用户场景不清晰;`--dry` 看计划 + 直接执行是更自然的流程,中途打断没有必要。 |
 | **`learn` 守卫**(`current == last_ai_write` 检查) | 用户责任边界由文档说明,工具不做技术兜底。 |
 | **多源语言** | 需求小众,等真实用户提再说。 |
 | **`--since` 时间过滤** | 路径作用域 + git 操作可以替代。 |
@@ -294,20 +336,21 @@ State 文件**进仓库**,理由:
 
 | 序号 | 任务 | 价值 |
 |---|---|---|
-| 1 | **`translate --dry`** | 零成本预览 + 成本估算,消除"按回车恐惧" |
+| 1 | **`translate --dry`**(含 memory 规则预览) | 零成本预览 + 成本估算 + memory 可见,消除"按回车恐惧" |
 | 2 | **`translate [path]`** 路径作用域 | 消除"全量恐惧",支持小步快跑 |
 | 3 | **translate 后的 summary 报告** | 让 memory / glossary 命中信息可见,核心差异点首次被用户感知 |
-| 4 | **删除 lint / retranslate / relearn** | 减法,UX 收敛 |
-| 5 | **state vs cache 目录分离 + .gitignore 模板** | 为后续奠定文件组织 |
+| 4 | **Glossary 基础支持**(配置文件 + 翻译后自动 patch + summary 展示) | summary 字段有实际数据;硬术语约束从第一天起生效 |
+| 5 | **删除 lint / retranslate / relearn** | 减法,UX 收敛 |
+| 6 | **state vs cache 目录分离 + .gitignore 模板** | 为后续奠定文件组织 |
 
 ### 🟡 第二档:质量与可见性(目标 2-3 周)
 
 | 序号 | 任务 | 价值 |
 |---|---|---|
-| 6 | **Glossary 一等公民**(配置文件 + 翻译时注入 + 后处理校验) | 解决硬术语约束,企业用户进门门槛 |
 | 7 | **`learn --interactive`**(默认开启) | 让 learn 安全可控 |
 | 8 | **learn 同时输出 glossary + memory 候选** | 让差异化能力闭环 |
-| 9 | **`status` 命令** | 团队 lead 的可见性入口 |
+| 9 | **Glossary 进阶**(翻译时注入 prompt + learn 提取 glossary 候选) | 从被动校验升级为主动引导翻译 |
+| 10 | **`status` 命令** | 团队 lead 的可见性入口 |
 
 ### 🟠 第三档:工作流集成(目标 1-2 月)
 
@@ -322,6 +365,7 @@ State 文件**进仓库**,理由:
 - `--since` 过滤
 - Memory 规则有效性分析
 - LLM 响应本地缓存
+- **Block 级增量翻译**:源文件变化时只重翻真正改动的 block,而非整篇重翻。基础设施已就位(`changedBlockIndexes` 参数和 block 级判断逻辑均已实现),缺的是 block 哈希存储与比对。对大型文档站有显著的 token 节省效果。
 
 ---
 

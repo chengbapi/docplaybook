@@ -1,101 +1,198 @@
 # Commands
 
-This page covers the core CLI surface after `init`.
+Full CLI reference for DocPlaybook. All commands accept an optional path argument to scope the operation to a specific file, directory, or workspace root.
 
-## Default command
-
-```bash
-pnpm exec docplaybook .
-```
-
-The default local workflow currently runs:
-
-1. `learn`
-2. `translate`
-
-Use it when you want the normal maintenance loop without choosing each step manually.
-
-## `docplaybook bootstrap`
+## `docplaybook init [workspace]`
 
 ```bash
-pnpm exec docplaybook bootstrap . --langs ja
+docplaybook init .
+docplaybook init ./my-docs
 ```
 
-Use `bootstrap` when the repository already contains aligned translated docs and you want DocPlaybook to infer the first project memory from that existing content.
+Initializes a DocPlaybook workspace. Run this once per project before using `translate` or `learn`.
 
-`bootstrap`:
+During init, DocPlaybook will:
 
-- scans aligned source and target documents already in the repo
-- writes the first `.docplaybook/playbook.md`
-- writes the first `.docplaybook/memories/<lang>.md`
+- auto-detect your docs framework layout (Docusaurus, Rspress, VitePress, or `sibling`)
+- prompt for source language and target languages
+- prompt for model provider, model name, and API key environment variable
+- run a connectivity check against the model
+- create `.docplaybook/config.json`
+- create `.docplaybook/memories/<lang>.md` for each target language
+- create `.docplaybook/playbook.md`
+- create `.docplaybook/.gitignore`
 
-It is a cold-start step. It does not keep the workspace in sync after that. Day-to-day updates still use `translate`, `learn`, and `lint`.
+If the repo already contains translated docs, `init` will suggest running `bootstrap` to seed the initial memory from existing translations.
 
-## `docplaybook translate`
+**Options:**
+
+| Flag | Description |
+|---|---|
+| `--source <lang>` | Source language code (e.g. `en`, `zh-CN`) |
+| `--targets <langs>` | Comma-separated target language codes (e.g. `zh,ja`) |
+| `--layout <kind>` | Force layout: `sibling`, `docusaurus`, `rspress`, `vitepress` |
+| `--model-kind <kind>` | Model provider: `openai`, `anthropic`, `openai-compatible`, `gateway` |
+| `--model <id>` | Model ID (e.g. `gpt-4o`, `claude-sonnet-4-5`) |
+| `--api-key-env <name>` | Environment variable name for the API key |
+| `--force` | Re-initialize even if config already exists |
+
+---
+
+## `docplaybook translate [path]`
 
 ```bash
-pnpm exec docplaybook translate .
+docplaybook translate
+docplaybook translate .
+docplaybook translate docs/guide/introduction.md
+docplaybook translate docs/guide/
 ```
 
-Use this when source docs changed and target docs need to catch up.
+Translates source files to all configured target languages. Skips files where the source hash has not changed since the last translation.
 
-`translate` is state-driven:
+The path argument scopes the operation. You can pass a workspace root, a subdirectory, or a single file.
 
-- if the source hash for a target document is unchanged and the target already exists, it skips
-- if the source hash changed or the target is missing, it refreshes the target article safely
+Glossary terms in `.docplaybook/glossary/<lang>.json` are applied as deterministic post-processing patches after LLM translation. Memory rules from `.docplaybook/memories/<lang>.md` and `.docplaybook/playbook.md` are injected into the LLM system prompt.
 
-You can limit the run to selected languages:
+**Options:**
+
+| Flag | Description |
+|---|---|
+| `--dry` | Show what would be translated and estimated token cost. No LLM calls are made. |
+| `--force` | Retranslate all files, even if the source hash matches. |
+| `--langs <langs>` | Comma-separated list of target languages to translate (e.g. `zh,ja`). |
+| `--lang <lang>` | Single target language to translate. |
+
+**Examples:**
 
 ```bash
-pnpm exec docplaybook translate . --langs ja
-pnpm exec docplaybook translate . --langs en,ja
+# Preview without translating
+docplaybook translate --dry
+
+# Translate everything
+docplaybook translate .
+
+# Translate only Japanese
+docplaybook translate --lang ja
+
+# Force-retranslate specific languages
+docplaybook translate --langs zh,ja --force
+
+# Translate a single file
+docplaybook translate docs/guide/introduction.md
 ```
 
-## `docplaybook learn`
+---
+
+## `docplaybook learn [path]`
 
 ```bash
-pnpm exec docplaybook learn .
+docplaybook learn
+docplaybook learn .
+docplaybook learn docs/guide/
 ```
 
-Use this after reviewers edited translated docs and you want those corrections to become reusable project guidance.
+Reads current source and target files and extracts reusable rules from human edits. Skips files where the target hash has not changed since the last `learn` run.
 
-`learn` is also state-driven:
+Candidates are classified into four scopes:
 
-- if the target hash is unchanged since the last learn run, it skips
-- if the target changed, it reads the current source/target pair and updates `playbook.md` and `memories/<lang>.md`
+| Scope | Written to |
+|---|---|
+| `glossary` | `.docplaybook/glossary/<lang>.json` |
+| `memory` | `.docplaybook/memories/<lang>.md` |
+| `playbook` | `.docplaybook/playbook.md` |
+| `ignore` | Discarded |
 
-You can limit learning to selected languages:
+**Interactive mode (default in a TTY):** each candidate is shown one at a time. Press:
+- `a` or Enter — accept as-is
+- `e` — open an editor to modify before saving
+- `s` — skip this candidate
+- `q` — quit and save accepted candidates so far
+
+**Non-interactive mode:** use `--no-interactive` to auto-accept all candidates. Suitable for CI pipelines.
+
+**Options:**
+
+| Flag | Description |
+|---|---|
+| `--no-interactive` | Auto-save all candidates without prompting. |
+| `--force` | Relearn even if the target hash matches. |
+| `--langs <langs>` | Comma-separated list of target languages to learn from. |
+| `--lang <lang>` | Single target language to learn from. |
+
+**Examples:**
 
 ```bash
-pnpm exec docplaybook learn . --langs ja
+# Interactive learn (normal local use)
+docplaybook learn .
+
+# Non-interactive for CI
+docplaybook learn . --no-interactive
+
+# Learn only from Japanese translations
+docplaybook learn --lang ja --force
 ```
 
-## `docplaybook lint`
+---
+
+## `docplaybook status [workspace]`
 
 ```bash
-pnpm exec docplaybook lint .
+docplaybook status
+docplaybook status .
 ```
 
-Use this to review translated docs against source docs and current project guidance.
+Read-only. Shows translation completion per language. Does not call the LLM.
 
-Typical variants:
+Output includes:
+
+- percentage complete per language
+- count of up-to-date, stale, and missing files
+- count of memory rules per language
+- count of glossary terms per language
+- suggestion to run `translate` if stale or missing files exist
+
+**Example output:**
+
+```
+zh   84%  42 up to date  6 stale  2 missing   18 memory rules  34 glossary terms
+ja   91%  46 up to date  2 stale  2 missing   12 memory rules  21 glossary terms
+
+Run `docplaybook translate` to sync stale and missing files.
+```
+
+---
+
+## `docplaybook bootstrap [workspace]`
 
 ```bash
-pnpm exec docplaybook lint . --fix
-pnpm exec docplaybook lint . --scope all
-pnpm exec docplaybook lint . --fix --scope changed --langs ja
+docplaybook bootstrap . --langs ja
+docplaybook bootstrap . --langs zh,ja
 ```
 
-## Logs
+One-time command. Builds initial memory files from existing translated docs already in the repo. Use this after `init` when the project already has aligned source and target files.
 
-Detailed logs:
+`bootstrap` scans aligned source/target document pairs and uses the LLM to infer:
 
-```bash
-pnpm exec docplaybook . --verbose
-```
+- `.docplaybook/playbook.md`
+- `.docplaybook/memories/<lang>.md` for each specified language
 
-Debug logs:
+It is a cold-start step. After bootstrapping, normal maintenance uses `translate` and `learn`.
 
-```bash
-pnpm exec docplaybook . --debug
-```
+**Options:**
+
+| Flag | Description |
+|---|---|
+| `--langs <langs>` | Required. Comma-separated target languages to bootstrap. |
+| `--lang <lang>` | Required (alternative). Single target language. |
+
+---
+
+## Global flags
+
+These flags apply to all commands:
+
+| Flag | Description |
+|---|---|
+| `--verbose` | Show detailed per-file progress output. |
+| `--debug` | Show debug-level output including prompt sizes, queue times, and model call status. |
+| `--help` | Show command help. |

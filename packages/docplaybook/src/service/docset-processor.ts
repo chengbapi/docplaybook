@@ -2,6 +2,7 @@ import type {
   AppConfig,
   BootstrapExample,
   DocSet,
+  DocSetTranslateResult,
   LearnCandidate,
   LearnJudgement,
   ModelUsageStats
@@ -12,6 +13,9 @@ import {
   snapshotsHaveSameShape
 } from '../markdown/blocks.js';
 import { MemoryStore } from '../memories/memory-store.js';
+import { GlossaryStore } from '../memories/glossary-store.js';
+import { reviewCandidatesInteractively } from '../learn/interactive.js';
+import { parseGlossaryRule } from '../translation/memory-updater.js';
 import { Translator } from '../translation/translator.js';
 import { MemoryUpdater } from '../translation/memory-updater.js';
 import { debugLog, formatDuration, label, verboseLog } from '../ui.js';
@@ -34,6 +38,8 @@ export class DocSetProcessor {
   private readonly sourceHashStore: SourceHashStore;
   private readonly learnedTargetHashStore: LearnedTargetHashStore;
 
+  private readonly glossaryStore: GlossaryStore;
+
   public constructor(
     private readonly workspaceRoot: string,
     private readonly config: AppConfig,
@@ -44,6 +50,7 @@ export class DocSetProcessor {
     private readonly observability: DocplaybookObservability = noopObservability
   ) {
     this.memoryStore = new MemoryStore(workspaceRoot);
+    this.glossaryStore = new GlossaryStore(workspaceRoot);
     this.sourceHashStore = new SourceHashStore(workspaceRoot);
     this.learnedTargetHashStore = new LearnedTargetHashStore(workspaceRoot);
   }
@@ -108,9 +115,7 @@ export class DocSetProcessor {
       requestPool?: RequestPool;
       pathLocks?: Map<string, Promise<void>>;
     } = {}
-  ): Promise<void> {
-    const startedAt = Date.now();
-    const totals = zeroUsage();
+  ): Promise<DocSetTranslateResult> {
     const sourceRaw = await this.provider.read(docSet.source.relativePath);
     const sourceHash = sha256(sourceRaw);
     const currentSourceSnapshot = parseDocumentSnapshot(docSet.source.relativePath, sourceRaw, {
@@ -148,13 +153,10 @@ export class DocSetProcessor {
     }
 
     if (targetLanguagesToProcess.length === 0) {
-      console.log(`${label('skip', 'cyan')} ${docSet.source.relativePath} (all targets up to date)`);
-      return;
+      verboseLog('skip', 'cyan', `${docSet.source.relativePath} (all targets up to date)`);
+      return { skipped: true, sourcePath: docSet.source.relativePath, perLanguage: [] };
     }
 
-    console.log(
-      `${label('translate', 'blue')} ${docSet.source.relativePath} (${targetLanguagesToProcess.join(', ')}, reason: ${reason})`
-    );
     debugLog(
       `${docSet.source.relativePath}: sourceChangedIndexes=${changedBlockIndexes.length > 0 ? changedBlockIndexes.map((index) => index + 1).join(', ') : '(none)'}, mode=full-document-on-source-change.`
     );
@@ -164,15 +166,12 @@ export class DocSetProcessor {
       this.config.concurrency?.maxConcurrentRequests ?? DEFAULT_MAX_CONCURRENT_REQUESTS
     );
 
-    const targetResults: Array<{ usage: ModelUsageStats }> = [];
     const languagesByPath = new Map<string, string[]>();
-
     for (const targetLanguage of targetLanguagesToProcess) {
       const targetPath = docSet.targets[targetLanguage]?.relativePath;
       if (!targetPath) {
         continue;
       }
-
       const group = languagesByPath.get(targetPath) ?? [];
       group.push(targetLanguage);
       languagesByPath.set(targetPath, group);
@@ -193,17 +192,16 @@ export class DocSetProcessor {
       })
     );
 
-    for (const targetResult of await Promise.all(pathTasks)) {
-      targetResults.push({ usage: targetResult.usage });
+    const pathResults = await Promise.all(pathTasks);
+
+    const perLanguage: DocSetTranslateResult['perLanguage'] = [];
+    for (const result of pathResults) {
+      for (const langStat of result.perLanguage) {
+        perLanguage.push(langStat);
+      }
     }
 
-    for (const targetResult of targetResults) {
-      addUsage(totals, targetResult.usage);
-    }
-
-    console.log(
-      `${label('done', 'green')} ${docSet.source.relativePath} translated in ${formatDuration(Date.now() - startedAt)} (input: ${totals.inputTokens}, output: ${totals.outputTokens}, total: ${totals.totalTokens}).`
-    );
+    return { skipped: false, sourcePath: docSet.source.relativePath, perLanguage };
   }
 
   private async runTranslateTaskForPath(input: {
@@ -217,13 +215,14 @@ export class DocSetProcessor {
     force: boolean;
     requestPool: RequestPool;
     pathLocks?: Map<string, Promise<void>>;
-  }): Promise<{ usage: ModelUsageStats }> {
-    const runTask = async (): Promise<{ usage: ModelUsageStats }> => {
-      const usage = zeroUsage();
+  }): Promise<{ perLanguage: DocSetTranslateResult['perLanguage'] }> {
+    const runTask = async (): Promise<{ perLanguage: DocSetTranslateResult['perLanguage'] }> => {
+      const perLanguage: DocSetTranslateResult['perLanguage'] = [];
 
       for (const targetLanguage of input.targetLanguages) {
         const targetPath = input.docSet.targets[targetLanguage]!.relativePath;
-        const nextTarget = await this.observability.withSpan(
+        const memoryRulesInjected = await this.memoryStore.countRules(targetLanguage);
+        const result = await this.observability.withSpan(
           'docplaybook.translate.article',
           {
             'docplaybook.doc_key': input.docSet.docKey,
@@ -249,20 +248,27 @@ export class DocSetProcessor {
                 label: `${input.docSet.source.relativePath} -> ${targetPath}`
               }
             );
+            const elapsedMs = Date.now() - startedAt;
             span.setAttributes({
               'docplaybook.input_tokens': translatedTarget.usage.inputTokens,
               'docplaybook.output_tokens': translatedTarget.usage.outputTokens,
               'docplaybook.total_tokens': translatedTarget.usage.totalTokens,
-              'docplaybook.elapsed_ms': Date.now() - startedAt
+              'docplaybook.elapsed_ms': elapsedMs
             });
-            return translatedTarget;
+            return { ...translatedTarget, elapsedMs };
           }
         );
         await this.sourceHashStore.set(input.docSet.targets[targetLanguage]!.relativePath, input.sourceHash);
-        addUsage(usage, nextTarget.usage);
+        perLanguage.push({
+          targetLanguage,
+          elapsedMs: result.elapsedMs,
+          totalTokens: result.usage.totalTokens,
+          memoryRulesInjected,
+          glossaryPatches: result.glossaryPatches,
+        });
       }
 
-      return { usage };
+      return { perLanguage };
     };
 
     if (!input.pathLocks) {
@@ -281,12 +287,15 @@ export class DocSetProcessor {
   public async learnWorkspace(
     docSets: DocSet[],
     targetLanguages: string[],
-    options: { force?: boolean } = {}
+    options: { force?: boolean; interactive?: boolean } = {}
   ): Promise<void> {
+    // Default interactive=true, but fall back to false in non-TTY environments (CI, pipes)
+    const interactive = (options.interactive ?? true) && Boolean(process.stdin.isTTY);
     const startedAt = Date.now();
     const totals = zeroUsage();
     const targetSet = new Set(targetLanguages);
     const candidatesByLanguage = new Map<string, LearnCandidate[]>();
+
     for (const docSet of docSets) {
       for (const [targetLanguage, targetRef] of Object.entries(docSet.targets)) {
         if (!targetSet.has(targetLanguage) || !(await this.provider.exists(targetRef.relativePath))) {
@@ -325,7 +334,7 @@ export class DocSetProcessor {
         continue;
       }
 
-      console.log(`${label('learn', 'magenta')} Reviewing ${candidates.length} edited block(s) for ${targetLanguage}.`);
+      console.log(`${label('learn', 'magenta')} Reviewing ${candidates.length} document(s) for ${targetLanguage}.`);
       const currentPlaybook = await this.memoryStore.readPlaybook();
       const currentMemory = await this.memoryStore.read(targetLanguage);
       const judged = await this.memoryUpdater.judgeLearnCandidates({
@@ -337,38 +346,76 @@ export class DocSetProcessor {
       });
       addUsage(totals, judged.usage);
 
-      const playbookRules = uniqueRules(judged.items.filter((item) => item.shouldLearn && item.scope === 'playbook'));
-      const memoryRules = uniqueRules(judged.items.filter((item) => item.shouldLearn && item.scope === 'memory'));
+      // Resolve which items to save — either all (non-interactive) or user-confirmed
+      const actionableItems = judged.items.filter((item) => item.shouldLearn && item.scope !== 'ignore');
+
+      type SavedItem = { scope: LearnJudgement['scope']; rule: string };
+      const toSave: SavedItem[] = [];
+
+      if (interactive && actionableItems.length > 0) {
+        const reviewed = await reviewCandidatesInteractively(actionableItems, targetLanguage);
+        for (const r of reviewed) {
+          if (r.action === 'accept') {
+            toSave.push({ scope: r.judgement.scope, rule: r.editedRule ?? r.judgement.proposedRule });
+          }
+        }
+      } else {
+        for (const item of actionableItems) {
+          toSave.push({ scope: item.scope, rule: item.proposedRule });
+        }
+      }
+
+      // Route accepted items to the correct store
+      const playbookRules = uniqueRulesFromItems(toSave.filter((s) => s.scope === 'playbook'));
+      const memoryRules = uniqueRulesFromItems(toSave.filter((s) => s.scope === 'memory'));
+      const glossaryItems = toSave.filter((s) => s.scope === 'glossary');
 
       if (playbookRules.length > 0) {
-        const updatedPlaybook = await this.memoryUpdater.mergeRules({
+        const updated = await this.memoryUpdater.mergeRules({
           scope: 'playbook',
           sourceLanguage: this.config.sourceLanguage,
           targetLanguage,
           memoryText: currentPlaybook,
           rules: playbookRules
         });
-        addUsage(totals, updatedPlaybook.usage);
-        await this.memoryStore.writePlaybook(updatedPlaybook.text);
-        console.log(`${label('memory', 'magenta')} Updated global playbook from ${targetLanguage} edits.`);
+        addUsage(totals, updated.usage);
+        await this.memoryStore.writePlaybook(updated.text);
+        console.log(`${label('memory', 'magenta')} Updated global playbook with ${playbookRules.length} rule(s).`);
       }
 
       if (memoryRules.length > 0) {
-        const updatedMemory = await this.memoryUpdater.mergeRules({
+        const updated = await this.memoryUpdater.mergeRules({
           scope: 'memory',
           sourceLanguage: this.config.sourceLanguage,
           targetLanguage,
           memoryText: currentMemory,
           rules: memoryRules
         });
-        addUsage(totals, updatedMemory.usage);
-        await this.memoryStore.write(targetLanguage, updatedMemory.text);
-        console.log(`${label('memory', 'magenta')} Updated ${targetLanguage} memory with ${memoryRules.length} rule(s).`);
+        addUsage(totals, updated.usage);
+        await this.memoryStore.write(targetLanguage, updated.text);
+        console.log(`${label('memory', 'magenta')} Added ${memoryRules.length} rule(s) to ${targetLanguage} memory.`);
       }
 
-      const ignored = judged.items.filter((item) => !item.shouldLearn || item.scope === 'ignore').length;
+      let glossaryAdded = 0;
+      for (const item of glossaryItems) {
+        const parsed = parseGlossaryRule(item.rule);
+        if (!parsed) {
+          verboseLog('warn', 'yellow', `Could not parse glossary rule: ${item.rule}`);
+          continue;
+        }
+        await this.glossaryStore.mergeEntry(targetLanguage, parsed.source, parsed.target);
+        glossaryAdded += 1;
+      }
+
+      if (glossaryAdded > 0) {
+        console.log(`${label('glossary', 'green')} Added ${glossaryAdded} term(s) to ${targetLanguage} glossary.`);
+      }
+
+      const savedCount = playbookRules.length + memoryRules.length + glossaryAdded;
+      const skippedCount = actionableItems.length - toSave.length;
+      const ignoredCount = judged.items.filter((item) => !item.shouldLearn || item.scope === 'ignore').length;
       console.log(
-        `${label('learn', 'magenta')} ${targetLanguage}: ${playbookRules.length + memoryRules.length} reusable rule(s), ${ignored} ignored edit(s).`
+        `${label('learn', 'magenta')} ${targetLanguage}: ${savedCount} saved, ${skippedCount > 0 ? `${skippedCount} skipped, ` : ''}${ignoredCount} ignored.`
       );
 
       const learnedTargetPaths = new Set(candidates.map((candidate) => candidate.targetPath));
@@ -379,7 +426,7 @@ export class DocSetProcessor {
     }
 
     console.log(
-      `${label('done', 'green')} Learned from translation edits in ${formatDuration(Date.now() - startedAt)} (input: ${totals.inputTokens}, output: ${totals.outputTokens}, total: ${totals.totalTokens}).`
+      `${label('done', 'green')} Learned in ${formatDuration(Date.now() - startedAt)} (input: ${totals.inputTokens}, output: ${totals.outputTokens}, total: ${totals.totalTokens}).`
     );
   }
 
@@ -484,9 +531,8 @@ export class DocSetProcessor {
     changedBlockIndexes: number[];
     forceFullTranslation: boolean;
     requestPool: RequestPool;
-  }): Promise<{ usage: ModelUsageStats }> {
+  }): Promise<{ usage: ModelUsageStats; glossaryPatches: number }> {
     const targetRef = input.docSet.targets[input.targetLanguage];
-    console.log(`${label('translate', 'blue')} ${input.docSet.source.relativePath} -> ${targetRef.relativePath}`);
     const currentMemory = await this.memoryStore.readPromptContext(input.targetLanguage);
     const targetExists = await this.provider.exists(targetRef.relativePath);
     const currentTargetSnapshot = targetExists
@@ -538,6 +584,11 @@ export class DocSetProcessor {
     }
 
     if (pendingBlocks.length > 0) {
+      const glossaryEntries = Object.entries(await this.glossaryStore.load(input.targetLanguage));
+      const glossaryText = glossaryEntries.length > 0
+        ? glossaryEntries.map(([src, tgt]) => `- "${src}" → "${tgt}"`).join('\n')
+        : undefined;
+
       const articleResult = await this.withRateLimitRetry(
         () =>
           this.translateArticleOnce({
@@ -545,6 +596,7 @@ export class DocSetProcessor {
             sourceLanguage: this.config.sourceLanguage,
             targetLanguage: input.targetLanguage,
             memoryText: currentMemory,
+            glossaryText,
             blocks: pendingBlocks
           }),
         input.requestPool
@@ -558,7 +610,8 @@ export class DocSetProcessor {
     }
 
     const renderBaseSnapshot = currentTargetSnapshot ?? input.sourceSnapshot;
-    const nextRaw = renderSnapshot(renderBaseSnapshot, nextBlockRaws);
+    const rawBeforeGlossary = renderSnapshot(renderBaseSnapshot, nextBlockRaws);
+    const { text: nextRaw, patches: glossaryPatches } = await this.glossaryStore.patch(rawBeforeGlossary, input.targetLanguage);
     const previousRaw = currentTargetSnapshot
       ? renderSnapshot(currentTargetSnapshot, currentTargetSnapshot.blocks.map((block) => block.raw))
       : '';
@@ -569,14 +622,14 @@ export class DocSetProcessor {
       verboseLog(
         'write',
         'cyan',
-        `${targetRef.relativePath}: wrote updated translation file (${translatedIndexes.length} translated block(s), ${usage.totalTokens} tokens).`
+        `${targetRef.relativePath}: wrote updated translation file (${translatedIndexes.length} translated block(s), ${usage.totalTokens} tokens, ${glossaryPatches} glossary patch(es)).`
       );
       setTimeout(() => {
         this.managedWrites.delete(targetRef.relativePath);
       }, 1_500);
     }
 
-    return { usage };
+    return { usage, glossaryPatches };
   }
 
   private async translateArticleOnce(input: {
@@ -584,6 +637,7 @@ export class DocSetProcessor {
     sourceLanguage: string;
     targetLanguage: string;
     memoryText: string;
+    glossaryText?: string;
     blocks: Array<{
       index: number;
       raw: string;
@@ -599,6 +653,7 @@ export class DocSetProcessor {
         sourceLanguage: input.sourceLanguage,
         targetLanguage: input.targetLanguage,
         memoryText: input.memoryText,
+        glossaryText: input.glossaryText,
         sourceBlock: block.raw,
         docKey: input.docKey
       });
@@ -613,6 +668,7 @@ export class DocSetProcessor {
       sourceLanguage: input.sourceLanguage,
       targetLanguage: input.targetLanguage,
       memoryText: input.memoryText,
+      glossaryText: input.glossaryText,
       docKey: input.docKey,
       blocks: input.blocks.map((block) => ({
         index: block.index,
@@ -637,18 +693,23 @@ export class DocSetProcessor {
     try {
       return await task();
     } catch (error) {
-      if (!isRetryableRateLimitError(error) || attempt >= 3) {
+      const retryKind = classifyRetryableError(error);
+      if (!retryKind || attempt >= 3) {
         throw error;
       }
 
-      requestPool?.noteRateLimit();
+      if (retryKind === 'rate_limit') {
+        requestPool?.noteRateLimit();
+      }
+
       const delayMs = 500 * 2 ** (attempt - 1);
       console.warn(
-        `${label('warning', 'yellow')} Rate limited. Retrying in ${delayMs}ms (attempt ${attempt + 1}/3).`
+        `${label('warning', 'yellow')} ${retryKind === 'rate_limit' ? 'Rate limited' : 'Server error'}. Retrying in ${delayMs}ms (attempt ${attempt + 1}/3).`
       );
-      this.observability.addEvent('docplaybook.translate.rate_limit_retry', {
+      this.observability.addEvent('docplaybook.translate.retry', {
         'docplaybook.retry_attempt': attempt,
-        'docplaybook.retry_delay_ms': delayMs
+        'docplaybook.retry_delay_ms': delayMs,
+        'docplaybook.retry_kind': retryKind
       });
       await sleep(delayMs);
       return this.withRateLimitRetry(task, requestPool, attempt + 1);
@@ -656,8 +717,8 @@ export class DocSetProcessor {
   }
 }
 
-function uniqueRules(items: LearnJudgement[]): string[] {
-  return [...new Set(items.map((item) => item.proposedRule.trim()).filter(Boolean))];
+function uniqueRulesFromItems(items: Array<{ rule: string }>): string[] {
+  return [...new Set(items.map((item) => item.rule.trim()).filter(Boolean))];
 }
 
 function zeroUsage(): ModelUsageStats {
@@ -684,9 +745,9 @@ function stripOuterMarkdownFence(text: string): string {
   return match[1] ?? normalized;
 }
 
-function isRetryableRateLimitError(error: unknown): boolean {
+function classifyRetryableError(error: unknown): 'rate_limit' | 'server_error' | null {
   if (!(error instanceof Error)) {
-    return false;
+    return null;
   }
 
   const record = error as Error & {
@@ -702,11 +763,29 @@ function isRetryableRateLimitError(error: unknown): boolean {
       : undefined);
 
   if (statusCode === 429) {
-    return true;
+    return 'rate_limit';
+  }
+
+  if (statusCode !== undefined && statusCode >= 500) {
+    return 'server_error';
   }
 
   const message = `${error.message} ${String(record.cause ?? '')}`.toLowerCase();
-  return message.includes('429') || message.includes('rate limit') || message.includes('too many requests');
+  if (message.includes('429') || message.includes('rate limit') || message.includes('too many requests')) {
+    return 'rate_limit';
+  }
+
+  if (
+    message.includes('econnreset') ||
+    message.includes('econnrefused') ||
+    message.includes('etimedout') ||
+    message.includes('network') ||
+    message.includes('socket')
+  ) {
+    return 'server_error';
+  }
+
+  return null;
 }
 
 function sleep(ms: number): Promise<void> {

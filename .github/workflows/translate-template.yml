@@ -1,0 +1,32 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# DocPlaybook — translate workflow template
+#
+# Copy this file to your project at .github/workflows/translate.yml
+# and adjust the two sections marked with ← CONFIGURE.
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: Translate docs
+
+on:
+  push:
+    branches: [main]
+    paths:                      # ← CONFIGURE: match your source doc paths
+      - 'docs/**/*.md'
+      - 'docs/**/*.mdx'
+
+jobs:
+  translate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write           # required to push translated files back
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docplaybook/docplaybook@v1
+        with:
+          working-directory: '.'
+          # langs: 'zh,ja'      # optional — translate specific languages only
+        env:
+          # ← CONFIGURE: set the env var matching model.apiKeyEnv in your config
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}

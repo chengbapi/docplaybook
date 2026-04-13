@@ -1,6 +1,7 @@
 import { context, trace, SpanStatusCode, type Span, type Tracer } from '@opentelemetry/api';
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { LangfuseSpanProcessor, isDefaultExportSpan } from '@langfuse/otel';
+import Langfuse from 'langfuse';
 import { UserFacingError } from './errors.js';
 
 type AttributeValue = string | number | boolean;
@@ -11,6 +12,17 @@ export interface ObservabilitySpan {
   addEvent(name: string, attributes?: AttributeMap): void;
 }
 
+export interface GenerationLogInput {
+  docKey: string;
+  targetLanguage: string;
+  callMode: 'single' | 'batch';
+  modelLabel: string;
+  systemPrompt: string;
+  userPrompt: string;
+  output: string;
+  usage: { inputTokens: number; outputTokens: number; totalTokens: number };
+}
+
 export interface DocplaybookObservability {
   readonly enabled: boolean;
   withSpan<T>(
@@ -19,6 +31,7 @@ export interface DocplaybookObservability {
     run: (span: ObservabilitySpan) => Promise<T> | T
   ): Promise<T>;
   addEvent(name: string, attributes?: AttributeMap): void;
+  logGeneration(input: GenerationLogInput): void;
   flush(): Promise<void>;
 }
 
@@ -49,6 +62,7 @@ export const noopObservability: DocplaybookObservability = {
     return run(noopSpan);
   },
   addEvent(): void {},
+  logGeneration(): void {},
   async flush(): Promise<void> {}
 };
 
@@ -62,7 +76,8 @@ class OpenTelemetryObservability implements DocplaybookObservability {
 
   public constructor(
     private readonly tracer: Tracer,
-    private readonly shutdownFn: () => Promise<void>
+    private readonly shutdownFn: () => Promise<void>,
+    private readonly langfuseClient: Langfuse | null = null
   ) {}
 
   public async withSpan<T>(
@@ -100,6 +115,40 @@ class OpenTelemetryObservability implements DocplaybookObservability {
     activeSpan.addEvent(name, toSpanAttributes(attributes ?? {}));
   }
 
+  public logGeneration(input: GenerationLogInput): void {
+    if (!this.langfuseClient) {
+      return;
+    }
+
+    const trace = this.langfuseClient.trace({
+      name: 'docplaybook.translate',
+      metadata: {
+        docKey: input.docKey,
+        targetLanguage: input.targetLanguage,
+        callMode: input.callMode
+      }
+    });
+
+    trace.generation({
+      name: `translate.${input.callMode}`,
+      model: input.modelLabel,
+      input: [
+        { role: 'system', content: input.systemPrompt },
+        { role: 'user', content: input.userPrompt }
+      ],
+      output: input.output,
+      usage: {
+        input: input.usage.inputTokens,
+        output: input.usage.outputTokens,
+        total: input.usage.totalTokens
+      },
+      metadata: {
+        docKey: input.docKey,
+        targetLanguage: input.targetLanguage
+      }
+    });
+  }
+
   public async flush(): Promise<void> {
     await this.shutdownFn();
   }
@@ -124,9 +173,25 @@ export function createObservability(options: ObservabilityOptions = {}): Docplay
   }
 
   const runtime = (options.runtimeFactory ?? createLangfuseRuntime)(config);
+
+  const langfuseClient = new Langfuse({
+    publicKey: config.publicKey,
+    secretKey: config.secretKey,
+    baseUrl: config.baseUrl,
+    flushAt: 20,
+    requestTimeout: config.flushTimeoutMs
+  });
+
   return new OpenTelemetryObservability(
     runtime.tracer,
-    () => withTimeout(runtime.shutdown(), config.flushTimeoutMs, 'Timed out while flushing Langfuse spans.')
+    async () => {
+      await withTimeout(
+        Promise.all([runtime.shutdown(), langfuseClient.flushAsync()]),
+        config.flushTimeoutMs,
+        'Timed out while flushing Langfuse.'
+      );
+    },
+    langfuseClient
   );
 }
 
